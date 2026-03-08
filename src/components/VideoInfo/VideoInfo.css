@@ -1,0 +1,171 @@
+/* ── Container ── */
+.video-info {
+  padding: 16px 0;
+}
+
+/* ── Title ── */
+.video-info-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 12px;
+  line-height: 1.4;
+}
+
+/* ── Channel row ── */
+.video-info-channel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.video-info-channel-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.video-info-avatar {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.video-info-channel-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.video-info-channel-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+
+.video-info-subscribers {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}
+
+.video-info-subscribe {
+  background: #000;
+  color: #fff;
+  border: none;
+  border-radius: 50px;
+  padding: 8px 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+  white-space: nowrap;
+}
+
+.video-info-subscribe:hover {
+  opacity: 0.8;
+}
+
+.video-info-sponsor {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 50px;
+  padding: 8px 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+
+.video-info-sponsor:hover {
+  background: #f0f0f0;
+}
+
+/* ── Actions (inside channel row, right side) ── */
+.video-info-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.video-info-action-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: #f0f0f0;
+  border: none;
+  border-radius: 50px;
+  padding: 8px 16px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease;
+  white-space: nowrap;
+}
+
+.video-info-action-btn:hover {
+  background: #e0e0e0;
+}
+
+.video-info-action-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ── Description ── */
+.video-info-description {
+  background: #f0f0f0;
+  border-radius: 12px;
+  padding: 12px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.video-info-description:hover {
+  background: #e8e8e8;
+}
+
+.video-info-description-meta {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 8px;
+}
+
+.video-info-description-text {
+  font-size: 0.85rem;
+  color: var(--text);
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.video-info-description-text--collapsed {
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.video-info-description-toggle {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-top: 8px;
+  cursor: pointer;
+  display: inline-block;
+}

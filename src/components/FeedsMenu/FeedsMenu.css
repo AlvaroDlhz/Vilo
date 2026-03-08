@@ -1,0 +1,244 @@
+.feeds-container {
+  position: relative;
+}
+
+.feeds-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 50px;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.feeds-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.feeds-btn svg {
+  width: 14px;
+  height: 14px;
+  transition: transform 0.2s ease;
+}
+
+.feeds-btn.open svg {
+  transform: rotate(180deg);
+}
+
+.feeds-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 280px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  z-index: 200;
+  max-height: 420px;
+  overflow-y: auto;
+  display: none;
+  transition: width 0.2s ease, min-width 0.2s ease;
+}
+
+.feeds-dropdown.visible {
+  display: block;
+}
+
+.feeds-dropdown.form-open {
+  min-width: 400px;
+  max-height: 520px;
+}
+
+.feeds-section-label {
+  padding: 10px 16px 4px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.feed-item {
+  padding: 10px 16px;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.1s ease;
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.feed-item:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.feed-item.active {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.feed-item-name {
+  flex: 1;
+}
+
+.feed-item-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.feed-item-check {
+  font-size: 0.85rem;
+  color: var(--accent);
+}
+
+.feed-item-delete {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 2px 4px;
+  border-radius: 4px;
+  line-height: 1;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.feed-item-delete:hover {
+  color: #d32f2f;
+  background: rgba(211, 47, 47, 0.08);
+}
+
+.feeds-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 12px;
+}
+
+.feeds-create-btn {
+  display: block;
+  width: 100%;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.feeds-create-btn:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--text);
+}
+
+.feeds-create-form {
+  padding: 20px 24px;
+  display: none;
+}
+
+.feeds-create-form.visible {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.feeds-create-form h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.feeds-create-form input[type="text"] {
+  width: 100%;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  outline: none;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease;
+}
+
+.feeds-create-form input[type="text"]:focus {
+  border-color: var(--accent);
+}
+
+.feeds-channel-list {
+  max-height: 200px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 0;
+}
+
+.feeds-channel-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 14px;
+  cursor: pointer;
+  font-size: 0.88rem;
+  color: var(--text);
+  transition: background 0.1s ease;
+}
+
+.feeds-channel-option:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.feeds-channel-option input[type="checkbox"] {
+  accent-color: var(--accent);
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.feeds-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 4px;
+}
+
+.feeds-form-cancel {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 50px;
+  padding: 8px 20px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  color: var(--text);
+  transition: background 0.15s ease;
+}
+
+.feeds-form-cancel:hover {
+  background: rgba(0, 0, 0, 0.04);
+}
+
+.feeds-form-save {
+  background: var(--text);
+  color: #fff;
+  border: none;
+  border-radius: 50px;
+  padding: 8px 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+}
+
+.feeds-form-save:hover {
+  opacity: 0.8;
+}

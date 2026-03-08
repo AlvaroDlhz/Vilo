@@ -1,0 +1,11 @@
+.banner {
+  width: 80vw;
+  height: 200px;
+  margin: 24px auto 0;
+  border: 2px dashed var(--border);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(250, 250, 250, 0.5);
+}
