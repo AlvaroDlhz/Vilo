@@ -16,8 +16,6 @@ export function FeedsMenu(options: FeedsMenuOptions = {}): HTMLDivElement {
   const { onFeedChange } = options;
 
   let activeFeedId = 'all';
-  let showingForm = false;
-
   const container = document.createElement('div');
   container.className = 'feeds-container';
 
@@ -56,7 +54,6 @@ export function FeedsMenu(options: FeedsMenuOptions = {}): HTMLDivElement {
 
   function renderList() {
     listView.innerHTML = '';
-    showingForm = false;
     formView.classList.remove('visible');
 
     const predefined = getPredefinedFeeds();
@@ -162,7 +159,6 @@ export function FeedsMenu(options: FeedsMenuOptions = {}): HTMLDivElement {
   }
 
   function showCreateForm() {
-    showingForm = true;
     listView.innerHTML = '';
 
     formView.innerHTML = '';
@@ -267,7 +263,6 @@ export function FeedsMenu(options: FeedsMenuOptions = {}): HTMLDivElement {
     dropdown.classList.remove('form-open');
     btn.classList.remove('open');
     formView.classList.remove('visible');
-    showingForm = false;
   }
 
   function toggleDropdown() {
