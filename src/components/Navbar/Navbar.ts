@@ -4,8 +4,12 @@ import { Logo } from '../Logo/Logo';
 import { SearchBar } from '../SearchBar/SearchBar';
 import { UserAvatar } from '../UserAvatar/UserAvatar';
 import { FeedsMenu } from '../FeedsMenu/FeedsMenu';
+import { AuthModal } from '../AuthModal/AuthModal';
 import { Feed } from '../../data/feedStore';
 import { hashColor } from '../../utils/avatarColor';
+import { subscribe, getAuthState, type AuthState } from '../../data/authStore';
+import { signOut } from '../../lib/auth';
+import { navigate } from '../../router/router';
 import plusIcon from '/assets/plus.svg?raw';
 import notifIcon from '/assets/notifications.svg?raw';
 import chatIcon from '/assets/chat.svg?raw';
@@ -14,7 +18,6 @@ import voiceIcon from '/assets/voice.svg?raw';
 export interface NavbarOptions {
   brandName?: string;
   searchPlaceholder?: string;
-  userAvatarUrl?: string;
   onMenuClick?: () => void;
   onLogoClick?: () => void;
   onSearchInput?: (value: string) => void;
@@ -27,7 +30,6 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
   const {
     brandName = 'Vilo',
     searchPlaceholder = 'Buscar...',
-    userAvatarUrl = 'https://api.dicebear.com/7.x/avataaars/svg?seed=user',
     onMenuClick,
     onLogoClick,
     onSearchInput,
@@ -40,7 +42,6 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
   wrapper.className = 'navbar-wrapper';
 
   const menuBtn = MenuButton(() => {
-    console.log('Abrir menú lateral');
     onMenuClick?.();
   });
 
@@ -50,7 +51,6 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
   const logo = Logo({
     brandName,
     onClick: () => {
-      console.log('Click en logo');
       onLogoClick?.();
     },
   });
@@ -59,48 +59,64 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
     placeholder: searchPlaceholder,
     onInput: (e) => {
       const value = (e.target as HTMLInputElement).value;
-      console.log('Buscando:', value);
       onSearchInput?.(value);
     },
   });
 
+  // --- Publish dropdown ---
+  const publishContainer = document.createElement('div');
+  publishContainer.className = 'navbar-dropdown-container';
+
   const publishBtn = document.createElement('button');
   publishBtn.className = 'publish-btn';
   publishBtn.innerHTML = `${plusIcon}<span>Publicar</span>`;
-  publishBtn.addEventListener('click', () => {
-    console.log('Click en publicar');
-    onPublishClick?.();
-  });
+
+  const publishDropdown = document.createElement('div');
+  publishDropdown.className = 'navbar-dropdown publish-dropdown';
+
+  // Stable container for publish dropdown interior
+  const publishDropdownInner = document.createElement('div');
+  publishDropdown.appendChild(publishDropdownInner);
+
+  publishContainer.append(publishBtn, publishDropdown);
 
   const userAvatar = UserAvatar({
-    imageUrl: userAvatarUrl,
+    imageUrl: 'https://api.dicebear.com/7.x/avataaars/svg?seed=felix',
   });
 
-  // Profile dropdown
-  const dropdown = document.createElement('div');
-  dropdown.className = 'profile-dropdown';
-  dropdown.innerHTML = `
-    <div class="profile-dropdown-header">
-      <img class="profile-dropdown-avatar" src="${userAvatarUrl}" alt="Usuario" />
-      <div class="profile-dropdown-info">
-        <span class="profile-dropdown-name">Usuario</span>
-        <span class="profile-dropdown-email">usuario@email.com</span>
-      </div>
-    </div>
-    <hr />
-    <div class="profile-dropdown-item">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-      <span>Tu canal</span>
-    </div>
-    <div class="profile-dropdown-item">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-      <span>Cambiar de cuenta</span>
-    </div>
-    <div class="profile-dropdown-item">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-      <span>Cerrar sesión</span>
-    </div>
-  `;
+  // Auth modal
+  const authModal = AuthModal();
+  document.body.appendChild(authModal.getElement());
+
+  // Auth dropdown (for non-logged-in users)
+  const authDropdown = document.createElement('div');
+  authDropdown.className = 'profile-dropdown';
+
+  const loginItem = document.createElement('div');
+  loginItem.className = 'profile-dropdown-item';
+  loginItem.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg><span>Iniciar sesión</span>`;
+  loginItem.addEventListener('click', () => {
+    authDropdown.classList.remove('open');
+    authModal.showLogin();
+  });
+
+  const registerItem = document.createElement('div');
+  registerItem.className = 'profile-dropdown-item primary';
+  registerItem.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg><span>Crear cuenta</span>`;
+  registerItem.addEventListener('click', () => {
+    authDropdown.classList.remove('open');
+    authModal.showRegister();
+  });
+
+  authDropdown.append(loginItem, registerItem);
+
+  // Profile dropdown (for logged-in users)
+  const profileDropdown = document.createElement('div');
+  profileDropdown.className = 'profile-dropdown';
+
+  // Stable container for profile dropdown interior
+  const profileDropdownInner = document.createElement('div');
+  profileDropdown.appendChild(profileDropdownInner);
 
   // --- Sample data ---
   const notifications = [
@@ -129,72 +145,17 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
   notifBtn.setAttribute('aria-label', 'Notificaciones');
   notifBtn.innerHTML = notifIcon;
 
-  const notifUnreadCount = notifications.filter(n => n.unread).length;
   const notifBadge = document.createElement('span');
   notifBadge.className = 'navbar-dropdown-badge';
-  notifBadge.textContent = String(notifUnreadCount);
-  if (notifUnreadCount === 0) notifBadge.style.display = 'none';
 
   const notifDropdown = document.createElement('div');
   notifDropdown.className = 'navbar-dropdown';
 
-  const notifHeader = document.createElement('div');
-  notifHeader.className = 'navbar-dropdown-header';
-  const notifTitle = document.createElement('span');
-  notifTitle.className = 'navbar-dropdown-header-title';
-  notifTitle.textContent = 'Notificaciones';
-  const markReadBtn = document.createElement('button');
-  markReadBtn.className = 'navbar-dropdown-header-action';
-  markReadBtn.textContent = 'Marcar como leídas';
-  notifHeader.append(notifTitle, markReadBtn);
-
-  notifications.forEach(n => {
-    const item = document.createElement('div');
-    item.className = 'navbar-dropdown-item' + (n.unread ? ' unread' : '');
-
-    const avatar = document.createElement('div');
-    avatar.className = 'navbar-dropdown-item-avatar';
-    avatar.style.background = hashColor(n.name);
-    avatar.textContent = n.name.charAt(0).toUpperCase();
-
-    const content = document.createElement('div');
-    content.className = 'navbar-dropdown-item-content';
-    const text = document.createElement('span');
-    text.className = 'navbar-dropdown-item-text';
-    text.textContent = n.text;
-    const time = document.createElement('span');
-    time.className = 'navbar-dropdown-item-time';
-    time.textContent = n.time;
-    content.append(text, time);
-
-    item.append(avatar, content);
-    if (n.unread) {
-      const dot = document.createElement('span');
-      dot.className = 'navbar-dropdown-unread-dot';
-      item.appendChild(dot);
-    }
-    notifDropdown.appendChild(item);
-  });
-
-  const notifFooter = document.createElement('div');
-  notifFooter.className = 'navbar-dropdown-footer';
-  notifFooter.textContent = 'Ver todas las notificaciones';
-
-  notifDropdown.prepend(notifHeader);
-  notifDropdown.appendChild(notifFooter);
+  // Stable container for notif dropdown interior
+  const notifDropdownInner = document.createElement('div');
+  notifDropdown.appendChild(notifDropdownInner);
 
   notifContainer.append(notifBtn, notifBadge, notifDropdown);
-
-  // Mark as read
-  markReadBtn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    notifDropdown.querySelectorAll('.navbar-dropdown-item.unread').forEach(item => {
-      item.classList.remove('unread');
-      const dot = item.querySelector('.navbar-dropdown-unread-dot');
-      if (dot) dot.remove();
-    });
-    notifBadge.style.display = 'none';
-  });
 
   // --- Chat dropdown ---
   const chatContainer = document.createElement('div');
@@ -205,90 +166,71 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
   chatBtn.setAttribute('aria-label', 'Mensajes');
   chatBtn.innerHTML = chatIcon;
 
-  const chatUnreadCount = chats.filter(c => c.unread).length;
   const chatBadge = document.createElement('span');
   chatBadge.className = 'navbar-dropdown-badge';
-  chatBadge.textContent = String(chatUnreadCount);
-  if (chatUnreadCount === 0) chatBadge.style.display = 'none';
 
   const chatDropdown = document.createElement('div');
   chatDropdown.className = 'navbar-dropdown';
 
-  const chatHeader = document.createElement('div');
-  chatHeader.className = 'navbar-dropdown-header';
-  const chatTitle = document.createElement('span');
-  chatTitle.className = 'navbar-dropdown-header-title';
-  chatTitle.textContent = 'Mensajes';
-  chatHeader.appendChild(chatTitle);
-
-  chats.forEach(c => {
-    const item = document.createElement('div');
-    item.className = 'navbar-dropdown-item' + (c.unread ? ' unread' : '');
-
-    const avatar = document.createElement('div');
-    avatar.className = 'navbar-dropdown-item-avatar';
-    avatar.style.background = hashColor(c.name);
-    avatar.textContent = c.name.charAt(0).toUpperCase();
-
-    const content = document.createElement('div');
-    content.className = 'navbar-dropdown-item-content';
-    const nameSpan = document.createElement('span');
-    nameSpan.className = 'navbar-dropdown-item-text';
-    nameSpan.innerHTML = `<strong>${c.name}</strong>`;
-    const msgSpan = document.createElement('span');
-    msgSpan.className = 'navbar-dropdown-item-text';
-    msgSpan.textContent = c.message;
-    const time = document.createElement('span');
-    time.className = 'navbar-dropdown-item-time';
-    time.textContent = c.time;
-    content.append(nameSpan, msgSpan, time);
-
-    item.append(avatar, content);
-    if (c.unread) {
-      const dot = document.createElement('span');
-      dot.className = 'navbar-dropdown-unread-dot';
-      item.appendChild(dot);
-    }
-    chatDropdown.appendChild(item);
-  });
-
-  const chatFooter = document.createElement('div');
-  chatFooter.className = 'navbar-dropdown-footer';
-  chatFooter.textContent = 'Ver todos los mensajes';
-
-  chatDropdown.prepend(chatHeader);
-  chatDropdown.appendChild(chatFooter);
+  // Stable container for chat dropdown interior
+  const chatDropdownInner = document.createElement('div');
+  chatDropdown.appendChild(chatDropdownInner);
 
   chatContainer.append(chatBtn, chatBadge, chatDropdown);
 
   // --- Toggle & coordination ---
+  function closeAllDropdowns() {
+    publishDropdown.classList.remove('open');
+    notifDropdown.classList.remove('open');
+    chatDropdown.classList.remove('open');
+    profileDropdown.classList.remove('open');
+    authDropdown.classList.remove('open');
+  }
+
+  publishBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const wasOpen = publishDropdown.classList.contains('open');
+    closeAllDropdowns();
+    if (!wasOpen) publishDropdown.classList.add('open');
+    onPublishClick?.();
+  });
+
   notifBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    notifDropdown.classList.toggle('open');
-    chatDropdown.classList.remove('open');
-    dropdown.classList.remove('open');
+    const wasOpen = notifDropdown.classList.contains('open');
+    closeAllDropdowns();
+    if (!wasOpen) notifDropdown.classList.add('open');
   });
 
   chatBtn.addEventListener('click', (e) => {
     e.stopPropagation();
-    chatDropdown.classList.toggle('open');
-    notifDropdown.classList.remove('open');
-    dropdown.classList.remove('open');
+    const wasOpen = chatDropdown.classList.contains('open');
+    closeAllDropdowns();
+    if (!wasOpen) chatDropdown.classList.add('open');
   });
 
   userAvatar.addEventListener('click', (e) => {
     e.stopPropagation();
-    dropdown.classList.toggle('open');
-    notifDropdown.classList.remove('open');
-    chatDropdown.classList.remove('open');
-    console.log('Abrir perfil de usuario');
+    const currentState = getAuthState();
+    if (currentState.isLoggedIn) {
+      const wasOpen = profileDropdown.classList.contains('open');
+      closeAllDropdowns();
+      if (!wasOpen) profileDropdown.classList.add('open');
+    } else {
+      const wasOpen = authDropdown.classList.contains('open');
+      closeAllDropdowns();
+      if (!wasOpen) authDropdown.classList.add('open');
+    }
     onUserClick?.();
   });
 
   document.addEventListener('click', (e) => {
     const target = e.target as Node;
-    if (!dropdown.contains(target) && !userAvatar.contains(target)) {
-      dropdown.classList.remove('open');
+    if (!profileDropdown.contains(target) && !userAvatar.contains(target)) {
+      profileDropdown.classList.remove('open');
+    }
+    if (!authDropdown.contains(target) && !userAvatar.contains(target)) {
+      authDropdown.classList.remove('open');
     }
     if (!notifDropdown.contains(target) && !notifBtn.contains(target)) {
       notifDropdown.classList.remove('open');
@@ -296,11 +238,14 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
     if (!chatDropdown.contains(target) && !chatBtn.contains(target)) {
       chatDropdown.classList.remove('open');
     }
+    if (!publishDropdown.contains(target) && !publishBtn.contains(target)) {
+      publishDropdown.classList.remove('open');
+    }
   });
 
   const navbarRight = document.createElement('div');
   navbarRight.className = 'navbar-right';
-  navbarRight.append(chatContainer, notifContainer, publishBtn);
+  navbarRight.append(chatContainer, notifContainer, publishContainer);
 
   const feedsMenu = FeedsMenu({
     onFeedChange: (feed) => onFeedChange?.(feed),
@@ -322,7 +267,345 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
   wrapper.appendChild(menuBtn);
   wrapper.appendChild(navbar);
   wrapper.appendChild(userAvatar);
-  wrapper.appendChild(dropdown);
+  wrapper.appendChild(authDropdown);
+  wrapper.appendChild(profileDropdown);
+
+  // ===========================
+  // Avatar cycling state
+  // ===========================
+  let cycleInterval: ReturnType<typeof setInterval> | null = null;
+  const avatarSeeds = ['felix', 'aneka', 'luna', 'jasper', 'milo', 'sara', 'leo', 'noa'];
+  let seedIndex = 0;
+  const avatarImg = userAvatar.querySelector('img') as HTMLImageElement;
+
+  function startAvatarCycling() {
+    if (cycleInterval) return;
+    userAvatar.classList.add('avatar-cycling');
+    if (avatarImg) {
+      avatarImg.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${avatarSeeds[0]}`;
+      seedIndex = 0;
+      cycleInterval = setInterval(() => {
+        avatarImg.classList.add('fade-out');
+        setTimeout(() => {
+          seedIndex = (seedIndex + 1) % avatarSeeds.length;
+          avatarImg.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${avatarSeeds[seedIndex]}`;
+          avatarImg.classList.remove('fade-out');
+        }, 400);
+      }, 2000);
+    }
+  }
+
+  function stopAvatarCycling() {
+    if (cycleInterval) {
+      clearInterval(cycleInterval);
+      cycleInterval = null;
+    }
+    userAvatar.classList.remove('avatar-cycling');
+    if (avatarImg) avatarImg.classList.remove('fade-out');
+  }
+
+  // ===========================
+  // Reactive auth update
+  // ===========================
+  function updateNavbarForAuth(authState: AuthState) {
+    const { isLoggedIn, profile } = authState;
+
+    // --- Avatar ---
+    if (avatarImg) {
+      if (isLoggedIn && profile?.avatar_url) {
+        stopAvatarCycling();
+        avatarImg.src = profile.avatar_url;
+      } else if (isLoggedIn) {
+        stopAvatarCycling();
+        const seed = profile?.username || profile?.display_name || 'user';
+        avatarImg.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`;
+      } else {
+        startAvatarCycling();
+      }
+    }
+
+    // --- Show/hide appropriate dropdown on avatar ---
+    authDropdown.style.display = isLoggedIn ? 'none' : '';
+    profileDropdown.style.display = isLoggedIn ? '' : 'none';
+
+    // --- Publish dropdown content ---
+    publishDropdownInner.innerHTML = '';
+    const publishHeader = document.createElement('div');
+    publishHeader.className = 'navbar-dropdown-header';
+    const publishTitle = document.createElement('span');
+    publishTitle.className = 'navbar-dropdown-header-title';
+    publishTitle.textContent = 'Publicar';
+    publishHeader.appendChild(publishTitle);
+
+    if (isLoggedIn) {
+      const videoItem = document.createElement('div');
+      videoItem.className = 'navbar-dropdown-item';
+      const videoAvatar = document.createElement('div');
+      videoAvatar.className = 'navbar-dropdown-item-avatar';
+      videoAvatar.style.background = '#e53935';
+      videoAvatar.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`;
+      const videoContent = document.createElement('div');
+      videoContent.className = 'navbar-dropdown-item-content';
+      const videoText = document.createElement('span');
+      videoText.className = 'navbar-dropdown-item-text';
+      videoText.textContent = 'Subir video';
+      const videoDesc = document.createElement('span');
+      videoDesc.className = 'navbar-dropdown-item-time';
+      videoDesc.textContent = 'Comparte un video...';
+      videoContent.append(videoText, videoDesc);
+      videoItem.append(videoAvatar, videoContent);
+      videoItem.addEventListener('click', () => {
+        publishDropdown.classList.remove('open');
+        navigate('/upload');
+      });
+
+      const postItem = document.createElement('div');
+      postItem.className = 'navbar-dropdown-item';
+      const postAvatar = document.createElement('div');
+      postAvatar.className = 'navbar-dropdown-item-avatar';
+      postAvatar.style.background = '#3b82f6';
+      postAvatar.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`;
+      const postContent = document.createElement('div');
+      postContent.className = 'navbar-dropdown-item-content';
+      const postText = document.createElement('span');
+      postText.className = 'navbar-dropdown-item-text';
+      postText.textContent = 'Crear post';
+      const postDesc = document.createElement('span');
+      postDesc.className = 'navbar-dropdown-item-time';
+      postDesc.textContent = 'Escribe para tu comunidad';
+      postContent.append(postText, postDesc);
+      postItem.append(postAvatar, postContent);
+      postItem.addEventListener('click', () => {
+        publishDropdown.classList.remove('open');
+      });
+
+      publishDropdownInner.append(publishHeader, videoItem, postItem);
+    } else {
+      const publishCta = document.createElement('div');
+      publishCta.className = 'navbar-dropdown-cta';
+      publishCta.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`;
+      const publishCtaText = document.createElement('p');
+      publishCtaText.textContent = 'Crea una cuenta en Vilo para comenzar a publicar contenido';
+      const publishCtaBtn = document.createElement('button');
+      publishCtaBtn.className = 'navbar-dropdown-cta-btn';
+      publishCtaBtn.textContent = 'Crear cuenta';
+      publishCtaBtn.addEventListener('click', () => {
+        closeAllDropdowns();
+        authModal.showRegister();
+      });
+      publishCta.append(publishCtaText, publishCtaBtn);
+      publishDropdownInner.append(publishHeader, publishCta);
+    }
+
+    // --- Notification dropdown content ---
+    notifDropdownInner.innerHTML = '';
+    const notifHeader = document.createElement('div');
+    notifHeader.className = 'navbar-dropdown-header';
+    const notifTitle = document.createElement('span');
+    notifTitle.className = 'navbar-dropdown-header-title';
+    notifTitle.textContent = 'Notificaciones';
+
+    if (isLoggedIn) {
+      const notifUnreadCount = notifications.filter(n => n.unread).length;
+      notifBadge.textContent = String(notifUnreadCount);
+      notifBadge.style.display = notifUnreadCount === 0 ? 'none' : '';
+
+      const markReadBtn = document.createElement('button');
+      markReadBtn.className = 'navbar-dropdown-header-action';
+      markReadBtn.textContent = 'Marcar como leídas';
+      notifHeader.append(notifTitle, markReadBtn);
+      notifDropdownInner.appendChild(notifHeader);
+
+      notifications.forEach(n => {
+        const item = document.createElement('div');
+        item.className = 'navbar-dropdown-item' + (n.unread ? ' unread' : '');
+
+        const avatar = document.createElement('div');
+        avatar.className = 'navbar-dropdown-item-avatar';
+        avatar.style.background = hashColor(n.name);
+        avatar.textContent = n.name.charAt(0).toUpperCase();
+
+        const content = document.createElement('div');
+        content.className = 'navbar-dropdown-item-content';
+        const text = document.createElement('span');
+        text.className = 'navbar-dropdown-item-text';
+        text.textContent = n.text;
+        const time = document.createElement('span');
+        time.className = 'navbar-dropdown-item-time';
+        time.textContent = n.time;
+        content.append(text, time);
+
+        item.append(avatar, content);
+        if (n.unread) {
+          const dot = document.createElement('span');
+          dot.className = 'navbar-dropdown-unread-dot';
+          item.appendChild(dot);
+        }
+        notifDropdownInner.appendChild(item);
+      });
+
+      const notifFooter = document.createElement('div');
+      notifFooter.className = 'navbar-dropdown-footer';
+      notifFooter.textContent = 'Ver todas las notificaciones';
+      notifDropdownInner.appendChild(notifFooter);
+
+      markReadBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        notifDropdownInner.querySelectorAll('.navbar-dropdown-item.unread').forEach(item => {
+          item.classList.remove('unread');
+          const dot = item.querySelector('.navbar-dropdown-unread-dot');
+          if (dot) dot.remove();
+        });
+        notifBadge.style.display = 'none';
+      });
+    } else {
+      notifBadge.style.display = 'none';
+      notifHeader.appendChild(notifTitle);
+
+      const notifCta = document.createElement('div');
+      notifCta.className = 'navbar-dropdown-cta';
+      notifCta.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`;
+      const notifCtaText = document.createElement('p');
+      notifCtaText.textContent = 'Crea una cuenta en Vilo para recibir notificaciones';
+      const notifCtaBtn = document.createElement('button');
+      notifCtaBtn.className = 'navbar-dropdown-cta-btn';
+      notifCtaBtn.textContent = 'Crear cuenta';
+      notifCtaBtn.addEventListener('click', () => {
+        closeAllDropdowns();
+        authModal.showRegister();
+      });
+      notifCta.append(notifCtaText, notifCtaBtn);
+      notifDropdownInner.append(notifHeader, notifCta);
+    }
+
+    // --- Chat dropdown content ---
+    chatDropdownInner.innerHTML = '';
+    const chatHeader = document.createElement('div');
+    chatHeader.className = 'navbar-dropdown-header';
+    const chatTitle = document.createElement('span');
+    chatTitle.className = 'navbar-dropdown-header-title';
+    chatTitle.textContent = 'Mensajes';
+    chatHeader.appendChild(chatTitle);
+
+    if (isLoggedIn) {
+      const chatUnreadCount = chats.filter(c => c.unread).length;
+      chatBadge.textContent = String(chatUnreadCount);
+      chatBadge.style.display = chatUnreadCount === 0 ? 'none' : '';
+
+      chatDropdownInner.appendChild(chatHeader);
+
+      chats.forEach(c => {
+        const item = document.createElement('div');
+        item.className = 'navbar-dropdown-item' + (c.unread ? ' unread' : '');
+
+        const avatar = document.createElement('div');
+        avatar.className = 'navbar-dropdown-item-avatar';
+        avatar.style.background = hashColor(c.name);
+        avatar.textContent = c.name.charAt(0).toUpperCase();
+
+        const content = document.createElement('div');
+        content.className = 'navbar-dropdown-item-content';
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'navbar-dropdown-item-text';
+        nameSpan.innerHTML = `<strong>${c.name}</strong>`;
+        const msgSpan = document.createElement('span');
+        msgSpan.className = 'navbar-dropdown-item-text';
+        msgSpan.textContent = c.message;
+        const time = document.createElement('span');
+        time.className = 'navbar-dropdown-item-time';
+        time.textContent = c.time;
+        content.append(nameSpan, msgSpan, time);
+
+        item.append(avatar, content);
+        if (c.unread) {
+          const dot = document.createElement('span');
+          dot.className = 'navbar-dropdown-unread-dot';
+          item.appendChild(dot);
+        }
+        chatDropdownInner.appendChild(item);
+      });
+
+      const chatFooter = document.createElement('div');
+      chatFooter.className = 'navbar-dropdown-footer';
+      chatFooter.textContent = 'Ver todos los mensajes';
+      chatDropdownInner.appendChild(chatFooter);
+    } else {
+      chatBadge.style.display = 'none';
+
+      const chatCta = document.createElement('div');
+      chatCta.className = 'navbar-dropdown-cta';
+      chatCta.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`;
+      const chatCtaText = document.createElement('p');
+      chatCtaText.textContent = 'Crea una cuenta en Vilo para enviar y recibir mensajes';
+      const chatCtaBtn = document.createElement('button');
+      chatCtaBtn.className = 'navbar-dropdown-cta-btn';
+      chatCtaBtn.textContent = 'Crear cuenta';
+      chatCtaBtn.addEventListener('click', () => {
+        closeAllDropdowns();
+        authModal.showRegister();
+      });
+      chatCta.append(chatCtaText, chatCtaBtn);
+      chatDropdownInner.append(chatHeader, chatCta);
+    }
+
+    // --- Profile dropdown content ---
+    profileDropdownInner.innerHTML = '';
+    if (isLoggedIn) {
+      const userName = profile?.display_name || 'Usuario';
+      const userEmail = profile?.email || '';
+      const userAvatarUrl = profile?.avatar_url
+        || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.username || 'user'}`;
+
+      const header = document.createElement('div');
+      header.className = 'profile-dropdown-header';
+      const headerImg = document.createElement('img');
+      headerImg.className = 'profile-dropdown-avatar';
+      headerImg.src = userAvatarUrl;
+      headerImg.alt = userName;
+      const headerInfo = document.createElement('div');
+      headerInfo.className = 'profile-dropdown-info';
+      const headerName = document.createElement('span');
+      headerName.className = 'profile-dropdown-name';
+      headerName.textContent = userName;
+      const headerUsername = document.createElement('span');
+      headerUsername.className = 'profile-dropdown-username';
+      headerUsername.textContent = profile?.username ? `@${profile.username}` : '';
+      const headerEmail = document.createElement('span');
+      headerEmail.className = 'profile-dropdown-email';
+      headerEmail.textContent = userEmail;
+      headerInfo.append(headerName, headerUsername, headerEmail);
+      header.append(headerImg, headerInfo);
+
+      const hr = document.createElement('hr');
+
+      const channelItem = document.createElement('div');
+      channelItem.className = 'profile-dropdown-item';
+      channelItem.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>Tu canal</span>`;
+
+      const switchItem = document.createElement('div');
+      switchItem.className = 'profile-dropdown-item';
+      switchItem.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Cambiar de cuenta</span>`;
+
+      const logoutItem = document.createElement('div');
+      logoutItem.className = 'profile-dropdown-item';
+      logoutItem.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Cerrar sesión</span>`;
+      logoutItem.addEventListener('click', async () => {
+        profileDropdown.classList.remove('open');
+        await signOut();
+      });
+
+      profileDropdownInner.append(header, hr, channelItem, switchItem, logoutItem);
+    }
+  }
+
+  // Initial render based on current auth state
+  updateNavbarForAuth(getAuthState());
+
+  // Subscribe to auth state changes
+  subscribe((authState) => {
+    closeAllDropdowns();
+    updateNavbarForAuth(authState);
+  });
 
   return wrapper;
 }

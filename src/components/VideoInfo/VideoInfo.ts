@@ -2,6 +2,10 @@ import './VideoInfo.css';
 import { hashColor } from '../../utils/avatarColor';
 import { getChannelIdByName } from '../../data/channelStore';
 import { navigate } from '../../router/router';
+import { voteVideo, getUserVideoVote, getVideoStats } from '../../lib/videoInteractions';
+import { getAuthState } from '../../data/authStore';
+import { supabase } from '../../lib/supabase';
+import { toggleSubscription, isSubscribed, getSubscriberCount } from '../../lib/subscriptions';
 
 export interface VideoInfoOptions {
   title: string;
@@ -12,10 +16,18 @@ export interface VideoInfoOptions {
   likes: string;
   dislikes: string;
   description: string;
+  videoId?: string;
+  channelUserId?: string;
+}
+
+function formatViewCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M vistas`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K vistas`;
+  return `${n} vista${n !== 1 ? 's' : ''}`;
 }
 
 export function VideoInfo(options: VideoInfoOptions): HTMLDivElement {
-  const { title, channelName, subscribers, views, publishedDate, likes, dislikes, description } = options;
+  const { title, channelName, subscribers, views, publishedDate, likes, dislikes, description, videoId, channelUserId } = options;
 
   const container = document.createElement('div');
   container.className = 'video-info';
@@ -50,21 +62,82 @@ export function VideoInfo(options: VideoInfoOptions): HTMLDivElement {
   channelNameEl.style.cursor = 'pointer';
   channelNameEl.addEventListener('click', () => navigate(`/channel/${channelId}`));
 
+  const channelHandle = document.createElement('span');
+  channelHandle.className = 'video-info-channel-handle';
+  channelHandle.textContent = `@${channelId}`;
+
   const subscribersEl = document.createElement('span');
   subscribersEl.className = 'video-info-subscribers';
   subscribersEl.textContent = subscribers;
 
-  channelText.append(channelNameEl, subscribersEl);
+  channelText.append(channelNameEl, channelHandle, subscribersEl);
 
   const subscribeBtn = document.createElement('button');
   subscribeBtn.className = 'video-info-subscribe';
   subscribeBtn.textContent = 'Suscribirse';
+
+  function formatSubscriberCount(n: number): string {
+    if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M suscriptores`;
+    if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K suscriptores`;
+    if (n === 1) return '1 suscriptor';
+    return `${n} suscriptores`;
+  }
+
+  if (channelUserId) {
+    // Load subscriber count
+    getSubscriberCount(channelUserId).then(count => {
+      subscribersEl.textContent = formatSubscriberCount(count);
+    });
+
+    const auth = getAuthState();
+    const isOwnChannel = auth.isLoggedIn && auth.user?.id === channelUserId;
+
+    if (isOwnChannel) {
+      subscribeBtn.style.display = 'none';
+    } else {
+      if (auth.isLoggedIn) {
+        isSubscribed(channelUserId).then(subscribed => {
+          if (subscribed) {
+            subscribeBtn.textContent = 'Desuscribirse';
+            subscribeBtn.classList.add('subscribed');
+          }
+        });
+      }
+
+      let subCount = 0;
+      getSubscriberCount(channelUserId).then(c => {
+        subCount = c;
+        subscribersEl.textContent = formatSubscriberCount(subCount);
+      });
+
+      subscribeBtn.addEventListener('click', () => {
+        if (!getAuthState().isLoggedIn) return;
+        const nowSubscribed = subscribeBtn.classList.contains('subscribed');
+        if (nowSubscribed) {
+          subscribeBtn.textContent = 'Suscribirse';
+          subscribeBtn.classList.remove('subscribed');
+          subCount--;
+        } else {
+          subscribeBtn.textContent = 'Desuscribirse';
+          subscribeBtn.classList.add('subscribed');
+          subCount++;
+        }
+        subscribersEl.textContent = formatSubscriberCount(subCount);
+        toggleSubscription(channelUserId);
+      });
+    }
+  }
 
   const sponsorBtn = document.createElement('button');
   sponsorBtn.className = 'video-info-sponsor';
   sponsorBtn.textContent = '$ Patrocinar';
 
   channelLeft.append(avatar, channelText, subscribeBtn, sponsorBtn);
+
+  // Description meta (created early so refreshStats can reference it)
+  const descMeta = document.createElement('p');
+  descMeta.className = 'video-info-description-meta';
+  descMeta.textContent = `${views} · ${publishedDate}`;
 
   // Actions (right side of channel row)
   const actionsRow = document.createElement('div');
@@ -85,6 +158,95 @@ export function VideoInfo(options: VideoInfoOptions): HTMLDivElement {
     </svg>`,
     dislikes,
   );
+
+  // Wire like/dislike interactions
+  if (videoId) {
+    let currentVote: number | null = null;
+    let currentLikes = parseInt(likes) || 0;
+    let currentDislikes = parseInt(dislikes) || 0;
+
+    function updateVoteUI() {
+      const likeSpan = likeBtn.querySelector('span');
+      const dislikeSpan = dislikeBtn.querySelector('span');
+      if (likeSpan) likeSpan.textContent = String(currentLikes);
+      if (dislikeSpan) dislikeSpan.textContent = String(currentDislikes);
+      likeBtn.classList.toggle('active', currentVote === 1);
+      dislikeBtn.classList.toggle('active', currentVote === -1);
+    }
+
+    // Load initial state from server
+    (async () => {
+      const [stats, vote] = await Promise.all([getVideoStats(videoId!), getUserVideoVote(videoId!)]);
+      currentLikes = stats.likes;
+      currentDislikes = stats.dislikes;
+      currentVote = vote;
+      descMeta.textContent = `${formatViewCount(stats.viewCount)} · ${publishedDate}`;
+      updateVoteUI();
+    })();
+
+    function applyOptimisticVote(vote: 1 | -1) {
+      if (currentVote === vote) {
+        // Toggle off
+        if (vote === 1) currentLikes--;
+        else currentDislikes--;
+        currentVote = null;
+      } else {
+        // Remove previous vote if any
+        if (currentVote === 1) currentLikes--;
+        else if (currentVote === -1) currentDislikes--;
+        // Apply new
+        if (vote === 1) currentLikes++;
+        else currentDislikes++;
+        currentVote = vote;
+      }
+      updateVoteUI();
+    }
+
+    likeBtn.addEventListener('click', () => {
+      if (!getAuthState().isLoggedIn) return;
+      applyOptimisticVote(1);
+      voteVideo(videoId!, 1);
+    });
+
+    dislikeBtn.addEventListener('click', () => {
+      if (!getAuthState().isLoggedIn) return;
+      applyOptimisticVote(-1);
+      voteVideo(videoId!, -1);
+    });
+
+    // Realtime subscription for live likes/dislikes/views updates
+    const realtimeChannel = supabase
+      .channel(`video-stats-${videoId}`)
+      .on(
+        'postgres_changes' as any,
+        { event: 'UPDATE', schema: 'public', table: 'user_videos', filter: `id=eq.${videoId}` },
+        (payload: any) => {
+          const row = payload.new;
+          if (row) {
+            currentLikes = row.likes ?? currentLikes;
+            currentDislikes = row.dislikes ?? currentDislikes;
+            updateVoteUI();
+            const viewCount = row.view_count ?? 0;
+            descMeta.textContent = `${formatViewCount(viewCount)} · ${publishedDate}`;
+          }
+        },
+      )
+      .subscribe();
+
+    // Cleanup realtime channel when element is removed from DOM
+    let rtMounted = false;
+    const rtObserver = new MutationObserver(() => {
+      if (!rtMounted) {
+        if (document.contains(container)) rtMounted = true;
+        return;
+      }
+      if (!document.contains(container)) {
+        supabase.removeChannel(realtimeChannel);
+        rtObserver.disconnect();
+      }
+    });
+    rtObserver.observe(document.body, { childList: true, subtree: true });
+  }
 
   const shareBtn = createActionBtn(
     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -116,10 +278,6 @@ export function VideoInfo(options: VideoInfoOptions): HTMLDivElement {
   // Description
   const descriptionBox = document.createElement('div');
   descriptionBox.className = 'video-info-description';
-
-  const descMeta = document.createElement('p');
-  descMeta.className = 'video-info-description-meta';
-  descMeta.textContent = `${views} · ${publishedDate}`;
 
   const descText = document.createElement('p');
   descText.className = 'video-info-description-text video-info-description-text--collapsed';

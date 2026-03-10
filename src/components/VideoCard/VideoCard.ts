@@ -24,7 +24,7 @@ const gradientClasses = [
 
 export function VideoCard(options: VideoCardOptions): HTMLDivElement {
   const {
-    title, channelName, channelAvatar, views,
+    thumbnail, title, channelName, channelAvatar, views,
     uploadedAt, duration, progress, gradientIndex = 0, variant = 'default', onClick,
   } = options;
 
@@ -36,7 +36,17 @@ export function VideoCard(options: VideoCardOptions): HTMLDivElement {
 
   // ── Thumbnail ──
   const thumb = document.createElement('div');
-  thumb.className = `video-card-thumbnail ${gradientClasses[gradientIndex % gradientClasses.length]}`;
+  if (thumbnail) {
+    thumb.className = 'video-card-thumbnail';
+    const img = document.createElement('img');
+    img.className = 'video-card-thumbnail-img';
+    img.src = thumbnail;
+    img.alt = title;
+    img.loading = 'lazy';
+    thumb.appendChild(img);
+  } else {
+    thumb.className = `video-card-thumbnail ${gradientClasses[gradientIndex % gradientClasses.length]}`;
+  }
 
   // Action buttons (appear on hover)
   const actions = document.createElement('div');

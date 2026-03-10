@@ -3,7 +3,7 @@
   gap: 4px;
   border-bottom: 1px solid var(--border);
   padding: 0 24px;
-  background: #fff;
+  background: var(--bg-surface);
   position: sticky;
   top: 84px;
   z-index: 10;

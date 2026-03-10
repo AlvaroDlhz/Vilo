@@ -1,388 +1,28 @@
+import { supabase } from '../lib/supabase';
+
 export interface VideoData {
   id: string;
+  userId: string;
   title: string;
+  description: string;
+  videoUrl: string;
+  thumbnailUrl: string;
   channelName: string;
-  channelAvatar?: string;
+  channelAvatar: string;
   views: string;
   uploadedAt: string;
   duration: string;
   gradientIndex: number;
-  description: string;
   subscribers: string;
   likes: string;
   dislikes: string;
   publishedDate: string;
+  category: string;
+  tags: string[];
 }
 
-const videos: VideoData[] = [
-  {
-    id: 'v1',
-    title: 'Video de ejemplo muy largo que ocupa varias líneas para probar el truncamiento',
-    channelName: 'Canal de Ejemplo',
-    views: '1.2M vistas',
-    uploadedAt: 'hace 2 días',
-    duration: '12:34',
-    gradientIndex: 0,
-    description: 'Este es un video de ejemplo con una descripción bastante larga para probar cómo se ve el texto expandible en la página de reproducción. Aquí podríamos incluir enlaces, hashtags y más información sobre el contenido del video.',
-    subscribers: '450K suscriptores',
-    likes: '32K',
-    dislikes: '1.2K',
-    publishedDate: '6 mar 2026',
-  },
-  {
-    id: 'v2',
-    title: 'Otro video de prueba',
-    channelName: 'Otro Canal',
-    views: '500K vistas',
-    uploadedAt: 'hace 5 horas',
-    duration: '8:15',
-    gradientIndex: 1,
-    description: 'Un video de prueba con contenido interesante. Suscríbete para más videos como este.',
-    subscribers: '120K suscriptores',
-    likes: '15K',
-    dislikes: '890',
-    publishedDate: '8 mar 2026',
-  },
-  {
-    id: 'v3',
-    title: 'Tutorial de programación',
-    channelName: 'Dev Tutorials',
-    views: '2.3M vistas',
-    uploadedAt: 'hace 1 semana',
-    duration: '45:20',
-    gradientIndex: 2,
-    description: 'En este tutorial aprenderás los fundamentos de la programación moderna. Cubriremos variables, funciones, estructuras de datos y mucho más.',
-    subscribers: '1.2M suscriptores',
-    likes: '89K',
-    dislikes: '2.1K',
-    publishedDate: '1 mar 2026',
-  },
-  {
-    id: 'v4',
-    title: 'Video viral del día',
-    channelName: 'Trending Now',
-    views: '10M vistas',
-    uploadedAt: 'hace 12 horas',
-    duration: '3:42',
-    gradientIndex: 3,
-    description: 'El video que todos están viendo hoy. No te lo pierdas.',
-    subscribers: '5.8M suscriptores',
-    likes: '520K',
-    dislikes: '18K',
-    publishedDate: '7 mar 2026',
-  },
-  {
-    id: 'v5',
-    title: 'Aprende CSS en 10 minutos',
-    channelName: 'Web Dev',
-    views: '800K vistas',
-    uploadedAt: 'hace 3 días',
-    duration: '10:05',
-    gradientIndex: 4,
-    description: 'CSS no tiene que ser difícil. En este video te enseño los conceptos más importantes en solo 10 minutos. Flexbox, Grid, animaciones y más.',
-    subscribers: '780K suscriptores',
-    likes: '45K',
-    dislikes: '1.5K',
-    publishedDate: '5 mar 2026',
-  },
-  {
-    id: 'v6',
-    title: 'Mi primer video',
-    channelName: 'Nuevo Creador',
-    views: '100 vistas',
-    uploadedAt: 'hace 1 hora',
-    duration: '1:30',
-    gradientIndex: 5,
-    description: 'Hola a todos, este es mi primer video en la plataforma. Espero que les guste y se suscriban.',
-    subscribers: '12 suscriptores',
-    likes: '8',
-    dislikes: '1',
-    publishedDate: '8 mar 2026',
-  },
-  {
-    id: 'v7',
-    title: 'Review completo',
-    channelName: 'Tech Reviews',
-    views: '1.5M vistas',
-    uploadedAt: 'hace 4 días',
-    duration: '20:15',
-    gradientIndex: 6,
-    description: 'Review completo y detallado del último dispositivo del mercado. Analizamos diseño, rendimiento, cámara, batería y precio.',
-    subscribers: '2.1M suscriptores',
-    likes: '67K',
-    dislikes: '3.4K',
-    publishedDate: '4 mar 2026',
-  },
-  {
-    id: 'v8',
-    title: 'Gaming highlights',
-    channelName: 'GameZone',
-    views: '3.2M vistas',
-    uploadedAt: 'hace 2 semanas',
-    duration: '15:00',
-    gradientIndex: 7,
-    description: 'Los mejores momentos de gaming de la semana. Clips épicos, fails y jugadas increíbles.',
-    subscribers: '4.3M suscriptores',
-    likes: '180K',
-    dislikes: '5.2K',
-    publishedDate: '22 feb 2026',
-  },
-  {
-    id: 'v9',
-    title: 'Documental interesante',
-    channelName: 'Docs Channel',
-    views: '750K vistas',
-    uploadedAt: 'hace 5 días',
-    duration: '55:30',
-    gradientIndex: 0,
-    description: 'Un documental fascinante sobre los misterios del universo. Narrado por expertos en astrofísica.',
-    subscribers: '900K suscriptores',
-    likes: '42K',
-    dislikes: '980',
-    publishedDate: '3 mar 2026',
-  },
-  {
-    id: 'v10',
-    title: 'Tips y tricks',
-    channelName: 'Life Hacks',
-    views: '420K vistas',
-    uploadedAt: 'hace 1 día',
-    duration: '7:22',
-    gradientIndex: 1,
-    description: '10 trucos que te van a cambiar la vida. Desde organización del hogar hasta productividad personal.',
-    subscribers: '650K suscriptores',
-    likes: '28K',
-    dislikes: '750',
-    publishedDate: '7 mar 2026',
-  },
-  {
-    id: 'v11',
-    title: 'Música relax',
-    channelName: 'Chill Vibes',
-    views: '2.1M vistas',
-    uploadedAt: 'hace 1 mes',
-    duration: '3:45:00',
-    gradientIndex: 2,
-    description: 'Música relajante para estudiar, trabajar o meditar. Lo-fi beats y sonidos de la naturaleza.',
-    subscribers: '3.5M suscriptores',
-    likes: '95K',
-    dislikes: '2.8K',
-    publishedDate: '8 feb 2026',
-  },
-  {
-    id: 'v12',
-    title: 'Receta de cocina',
-    channelName: 'Chef Casero',
-    views: '890K vistas',
-    uploadedAt: 'hace 6 días',
-    duration: '18:30',
-    gradientIndex: 3,
-    description: 'Hoy preparamos una receta deliciosa y fácil de hacer en casa. Ingredientes simples y resultado espectacular.',
-    subscribers: '1.1M suscriptores',
-    likes: '53K',
-    dislikes: '1.1K',
-    publishedDate: '2 mar 2026',
-  },
-  {
-    id: 'v13',
-    title: 'Aprende React desde cero',
-    channelName: 'CodeMaster',
-    views: '1.8M vistas',
-    uploadedAt: 'hace 2 semanas',
-    duration: '2:30:00',
-    gradientIndex: 4,
-    description: 'Curso completo de React desde cero. Hooks, componentes, estado, efectos, y patrones modernos de desarrollo.',
-    subscribers: '2.8M suscriptores',
-    likes: '120K',
-    dislikes: '4.5K',
-    publishedDate: '22 feb 2026',
-  },
-  {
-    id: 'v14',
-    title: 'Unboxing nuevo producto',
-    channelName: 'Tech Unbox',
-    views: '560K vistas',
-    uploadedAt: 'hace 3 días',
-    duration: '12:15',
-    gradientIndex: 5,
-    description: 'Unboxing y primeras impresiones del producto más esperado del año. ¿Vale la pena?',
-    subscribers: '890K suscriptores',
-    likes: '31K',
-    dislikes: '920',
-    publishedDate: '5 mar 2026',
-  },
-  {
-    id: 'v15',
-    title: 'Viaje por Europa',
-    channelName: 'Traveler',
-    views: '3.4M vistas',
-    uploadedAt: 'hace 1 semana',
-    duration: '25:00',
-    gradientIndex: 6,
-    description: 'Recorremos las ciudades más bonitas de Europa. París, Roma, Barcelona, Praga y más destinos increíbles.',
-    subscribers: '4.7M suscriptores',
-    likes: '210K',
-    dislikes: '6.3K',
-    publishedDate: '1 mar 2026',
-  },
-  {
-    id: 'v16',
-    title: 'Ejercicios en casa',
-    channelName: 'Fitness Pro',
-    views: '720K vistas',
-    uploadedAt: 'hace 5 días',
-    duration: '30:00',
-    gradientIndex: 7,
-    description: 'Rutina completa de ejercicios para hacer en casa sin equipamiento. 30 minutos de entrenamiento efectivo.',
-    subscribers: '1.5M suscriptores',
-    likes: '48K',
-    dislikes: '1.3K',
-    publishedDate: '3 mar 2026',
-  },
-  {
-    id: 'v17',
-    title: 'Aprende Python básico',
-    channelName: 'CodeAcademy',
-    views: '4.5M vistas',
-    uploadedAt: 'hace 3 semanas',
-    duration: '1:15:00',
-    gradientIndex: 0,
-    description: 'Introducción a Python para principiantes. Aprende a programar desde cero con ejemplos prácticos.',
-    subscribers: '6.2M suscriptores',
-    likes: '280K',
-    dislikes: '8.1K',
-    publishedDate: '15 feb 2026',
-  },
-  {
-    id: 'v18',
-    title: 'Compilation de fails',
-    channelName: 'FailTube',
-    views: '8.2M vistas',
-    uploadedAt: 'hace 4 días',
-    duration: '14:20',
-    gradientIndex: 1,
-    description: 'Los fails más graciosos de internet recopilados en un solo video. Prepárate para reír.',
-    subscribers: '9.1M suscriptores',
-    likes: '450K',
-    dislikes: '12K',
-    publishedDate: '4 mar 2026',
-  },
-  {
-    id: 'v19',
-    title: 'Documental naturaleza',
-    channelName: 'Nature Docs',
-    views: '1.1M vistas',
-    uploadedAt: 'hace 2 semanas',
-    duration: '52:00',
-    gradientIndex: 2,
-    description: 'Explora la belleza de la naturaleza en este documental cinematográfico. Filmado en 4K en los lugares más remotos del planeta.',
-    subscribers: '2.3M suscriptores',
-    likes: '72K',
-    dislikes: '1.8K',
-    publishedDate: '22 feb 2026',
-  },
-  {
-    id: 'v20',
-    title: 'Cómo hacer magia',
-    channelName: 'Magic Tricks',
-    views: '340K vistas',
-    uploadedAt: 'hace 1 semana',
-    duration: '8:45',
-    gradientIndex: 3,
-    description: 'Aprende 5 trucos de magia fáciles que puedes hacer en casa. Solo necesitas una baraja de cartas.',
-    subscribers: '420K suscriptores',
-    likes: '19K',
-    dislikes: '420',
-    publishedDate: '1 mar 2026',
-  },
-  {
-    id: 'v21',
-    title: 'Aprende JS en 1 hora',
-    channelName: 'DevFast',
-    views: '2.7M vistas',
-    uploadedAt: 'hace 5 días',
-    duration: '1:05:00',
-    gradientIndex: 4,
-    description: 'JavaScript desde cero en una hora. Variables, funciones, arrays, objetos, promesas y async/await.',
-    subscribers: '1.9M suscriptores',
-    likes: '150K',
-    dislikes: '3.7K',
-    publishedDate: '3 mar 2026',
-  },
-  {
-    id: 'v22',
-    title: 'Top 10 películas 2024',
-    channelName: 'CineFan',
-    views: '1.9M vistas',
-    uploadedAt: 'hace 6 días',
-    duration: '22:30',
-    gradientIndex: 5,
-    description: 'Las mejores películas del año según la crítica y el público. ¿Estás de acuerdo con nuestra lista?',
-    subscribers: '3.2M suscriptores',
-    likes: '98K',
-    dislikes: '2.9K',
-    publishedDate: '2 mar 2026',
-  },
-  {
-    id: 'v23',
-    title: 'Construye tu PC',
-    channelName: 'PC Builder',
-    views: '5.1M vistas',
-    uploadedAt: 'hace 1 mes',
-    duration: '45:00',
-    gradientIndex: 6,
-    description: 'Guía completa paso a paso para armar tu propia PC. Selección de componentes, ensamblaje y configuración inicial.',
-    subscribers: '7.4M suscriptores',
-    likes: '320K',
-    dislikes: '9.5K',
-    publishedDate: '8 feb 2026',
-  },
-  {
-    id: 'v24',
-    title: 'Historia del arte',
-    channelName: 'ArtClass',
-    views: '620K vistas',
-    uploadedAt: 'hace 2 semanas',
-    duration: '35:15',
-    gradientIndex: 7,
-    description: 'Un recorrido por la historia del arte desde el Renacimiento hasta el arte contemporáneo.',
-    subscribers: '580K suscriptores',
-    likes: '35K',
-    dislikes: '680',
-    publishedDate: '22 feb 2026',
-  },
-  {
-    id: 'v25',
-    title: 'Aprende Fotografía',
-    channelName: 'PhotoPro',
-    views: '980K vistas',
-    uploadedAt: 'hace 1 semana',
-    duration: '28:00',
-    gradientIndex: 0,
-    description: 'Fundamentos de fotografía: composición, iluminación, exposición y edición. Para principiantes y nivel intermedio.',
-    subscribers: '1.3M suscriptores',
-    likes: '56K',
-    dislikes: '1.4K',
-    publishedDate: '1 mar 2026',
-  },
-  {
-    id: 'v26',
-    title: 'Moda y estilo',
-    channelName: 'StyleHub',
-    views: '450K vistas',
-    uploadedAt: 'hace 3 días',
-    duration: '15:40',
-    gradientIndex: 1,
-    description: 'Las tendencias de moda para esta temporada. Outfits, combinaciones y consejos de estilo para todos.',
-    subscribers: '720K suscriptores',
-    likes: '24K',
-    dislikes: '580',
-    publishedDate: '5 mar 2026',
-  },
-];
-
+const videos: VideoData[] = [];
 const videoMap = new Map<string, VideoData>();
-videos.forEach(v => videoMap.set(v.id, v));
 
 export function getVideoById(id: string): VideoData | undefined {
   return videoMap.get(id);
@@ -394,4 +34,110 @@ export function getAllVideos(): VideoData[] {
 
 export function getRecommendedVideos(currentId: string, count: number = 15): VideoData[] {
   return videos.filter(v => v.id !== currentId).slice(0, count);
+}
+
+function timeAgo(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMs = now - then;
+  const diffSec = Math.floor(diffMs / 1000);
+  const diffMin = Math.floor(diffSec / 60);
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+  const diffWeek = Math.floor(diffDay / 7);
+  const diffMonth = Math.floor(diffDay / 30);
+
+  if (diffMin < 1) return 'hace un momento';
+  if (diffMin < 60) return `hace ${diffMin} min`;
+  if (diffHour < 24) return `hace ${diffHour} hora${diffHour > 1 ? 's' : ''}`;
+  if (diffDay < 7) return `hace ${diffDay} día${diffDay > 1 ? 's' : ''}`;
+  if (diffWeek < 5) return `hace ${diffWeek} semana${diffWeek > 1 ? 's' : ''}`;
+  return `hace ${diffMonth} mes${diffMonth > 1 ? 'es' : ''}`;
+}
+
+function formatViews(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M vistas`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K vistas`;
+  return `${n} vista${n !== 1 ? 's' : ''}`;
+}
+
+function formatDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+export async function initVideoStore(): Promise<void> {
+  try {
+    // Fetch published public videos
+    const { data: rows, error } = await supabase
+      .from('user_videos')
+      .select('*')
+      .eq('visibility', 'public')
+      .eq('status', 'published')
+      .order('created_at', { ascending: false });
+
+    if (error) throw error;
+    if (!rows || rows.length === 0) return;
+
+    // Fetch profiles for all video authors
+    const userIds = [...new Set(rows.map(r => r.user_id))];
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, display_name, username, avatar_url')
+      .in('id', userIds);
+
+    const profileMap = new Map<string, { display_name: string; username: string; avatar_url: string | null }>();
+    if (profiles) {
+      for (const p of profiles) {
+        profileMap.set(p.id, p);
+      }
+    }
+
+    videos.length = 0;
+    videoMap.clear();
+
+    for (const row of rows) {
+      const profile = profileMap.get(row.user_id);
+      const channelName = profile?.display_name || profile?.username || 'Usuario';
+      const channelAvatar = profile?.avatar_url
+        || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.username || row.user_id}`;
+
+      const video: VideoData = {
+        id: row.id,
+        userId: row.user_id,
+        title: row.title,
+        description: row.description || '',
+        videoUrl: row.video_url || '',
+        thumbnailUrl: row.thumbnail_url || '',
+        channelName,
+        channelAvatar,
+        views: formatViews(row.view_count ?? 0),
+        uploadedAt: timeAgo(row.created_at),
+        duration: '',
+        gradientIndex: hashToIndex(row.id),
+        subscribers: '',
+        likes: String(row.likes ?? 0),
+        dislikes: String(row.dislikes ?? 0),
+        publishedDate: formatDate(row.created_at),
+        category: row.category || '',
+        tags: row.tags || [],
+      };
+      videos.push(video);
+      videoMap.set(video.id, video);
+    }
+
+    console.log(`[videoStore] Loaded ${videos.length} videos from Supabase`);
+  } catch (err) {
+    console.warn('[videoStore] Failed to load videos:', err);
+  }
+}
+
+function hashToIndex(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % 8;
 }

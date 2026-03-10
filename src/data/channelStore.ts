@@ -1,4 +1,5 @@
 import { getAllVideos, VideoData } from './videoStore';
+import { supabase } from '../lib/supabase';
 
 export interface ChannelLink {
   label: string;
@@ -246,4 +247,35 @@ export function getVideosByChannel(channelId: string): VideoData[] {
 
 export function getChannelIdByName(channelName: string): string {
   return slugify(channelName);
+}
+
+export async function initChannelStore(): Promise<void> {
+  try {
+    const { data, error } = await supabase.from('channels').select('*');
+    if (error) throw error;
+    if (!data || data.length === 0) return;
+
+    channelMap.clear();
+
+    for (const row of data) {
+      const channel: ChannelData = {
+        id: row.id,
+        name: row.name,
+        subscribers: row.subscribers,
+        description: row.description,
+        joinedDate: row.joined_date,
+        totalViews: row.total_views,
+        location: row.location,
+        links: row.links as ChannelLink[],
+        bannerGradientIndex: row.banner_gradient_index,
+        playlists: row.playlists as ChannelPlaylist[],
+        posts: row.posts as ChannelPost[],
+      };
+      channelMap.set(channel.id, channel);
+    }
+
+    console.log(`[channelStore] Loaded ${channelMap.size} channels from Supabase`);
+  } catch (err) {
+    console.warn('[channelStore] Supabase fetch failed, using hardcoded data:', err);
+  }
 }

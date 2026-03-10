@@ -9,6 +9,13 @@
   cursor: pointer;
 }
 
+.video-player-video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
 .video-player::before {
   content: '';
   position: absolute;

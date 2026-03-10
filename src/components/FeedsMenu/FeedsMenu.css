@@ -19,7 +19,7 @@
 }
 
 .feeds-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--bg-hover);
 }
 
 .feeds-btn svg {
@@ -37,10 +37,10 @@
   top: calc(100% + 8px);
   left: 0;
   min-width: 280px;
-  background: #fff;
+  background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-modal);
   z-index: 200;
   max-height: 420px;
   overflow-y: auto;
@@ -78,7 +78,7 @@
 }
 
 .feed-item:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--bg-hover);
 }
 
 .feed-item.active {
@@ -138,7 +138,7 @@
 }
 
 .feeds-create-btn:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--bg-hover);
   color: var(--text);
 }
 
@@ -195,7 +195,7 @@
 }
 
 .feeds-channel-option:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--bg-hover);
 }
 
 .feeds-channel-option input[type="checkbox"] {
@@ -224,7 +224,7 @@
 }
 
 .feeds-form-cancel:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--bg-hover);
 }
 
 .feeds-form-save {
