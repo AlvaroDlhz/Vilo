@@ -58,6 +58,7 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
   const info = VideoInfo({
     title: video.title,
     channelName: video.channelName,
+    channelAvatar: video.channelAvatar,
     subscribers: video.subscribers,
     views: video.views,
     publishedDate: video.publishedDate,

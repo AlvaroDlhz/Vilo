@@ -10,6 +10,7 @@ import { toggleSubscription, isSubscribed, getSubscriberCount } from '../../lib/
 export interface VideoInfoOptions {
   title: string;
   channelName: string;
+  channelAvatar?: string;
   subscribers: string;
   views: string;
   publishedDate: string;
@@ -27,7 +28,7 @@ function formatViewCount(n: number): string {
 }
 
 export function VideoInfo(options: VideoInfoOptions): HTMLDivElement {
-  const { title, channelName, subscribers, views, publishedDate, likes, dislikes, description, videoId, channelUserId } = options;
+  const { title, channelName, channelAvatar, subscribers, views, publishedDate, likes, dislikes, description, videoId, channelUserId } = options;
 
   const container = document.createElement('div');
   container.className = 'video-info';
@@ -48,9 +49,18 @@ export function VideoInfo(options: VideoInfoOptions): HTMLDivElement {
 
   const avatar = document.createElement('div');
   avatar.className = 'video-info-avatar';
-  avatar.textContent = channelName.charAt(0).toUpperCase();
-  avatar.style.background = hashColor(channelName);
   avatar.style.cursor = 'pointer';
+  
+  if (channelAvatar) {
+    const img = document.createElement('img');
+    img.src = channelAvatar;
+    img.alt = channelName;
+    avatar.appendChild(img);
+  } else {
+    avatar.textContent = channelName.charAt(0).toUpperCase();
+    avatar.style.background = hashColor(channelName);
+  }
+  
   avatar.addEventListener('click', () => navigate(`/channel/${channelId}`));
 
   const channelText = document.createElement('div');

@@ -14,6 +14,16 @@ const SUN_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" st
 const MOON_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>`;
 const PALETTE_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="0.5" fill="currentColor"/><circle cx="17.5" cy="10.5" r="0.5" fill="currentColor"/><circle cx="8.5" cy="7.5" r="0.5" fill="currentColor"/><circle cx="6.5" cy="12" r="0.5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg>`;
 const SUBSCRIPTIONS_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`;
+const HISTORY_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`;
+const BOOKMARK_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>`;
+const HEART_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/></svg>`;
+const SETTINGS_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+const HELP_ICON = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+const QUESTION_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+const FLAG_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>`;
+const FILE_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`;
+const PLAY_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>`;
+const MUSIC_ICON = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`;
 
 function getCurrentTheme(): string {
   return localStorage.getItem('vilo-theme') || 'default';
@@ -38,6 +48,13 @@ export class Sidebar {
   private appearanceSection: HTMLElement;
   private themeOptions: HTMLElement;
   private subscriptionsSection: HTMLElement;
+  private librarySection: HTMLElement;
+  private libraryList: HTMLElement;
+  private settingsSection: HTMLElement;
+  private helpSection: HTMLElement;
+  private helpList: HTMLElement;
+  private originalsSection: HTMLElement;
+  private originalsList: HTMLElement;
   private subscriptionsList: HTMLElement;
   private cachedSubscriptions: Awaited<ReturnType<typeof getUserSubscriptions>> = [];
 
@@ -49,6 +66,13 @@ export class Sidebar {
     this.appearanceSection = document.createElement('div');
     this.themeOptions = document.createElement('div');
     this.subscriptionsSection = document.createElement('div');
+    this.librarySection = document.createElement('div');
+    this.libraryList = document.createElement('div');
+    this.settingsSection = document.createElement('div');
+    this.helpSection = document.createElement('div');
+    this.helpList = document.createElement('div');
+    this.originalsSection = document.createElement('div');
+    this.originalsList = document.createElement('div');
     this.subscriptionsList = document.createElement('div');
     this.element = this.createElement();
     this.documentClickHandler = this.handleDocumentClick.bind(this);
@@ -109,12 +133,130 @@ export class Sidebar {
 
     this.subscriptionsSection.append(subscriptionsBtn, this.subscriptionsList);
 
+    // Library section
+    this.librarySection.className = 'sidebar-section sidebar-library';
+    this.libraryList.className = 'sidebar-library-list';
+
+    const libraryBtn = document.createElement('button');
+    libraryBtn.className = 'sidebar-item sidebar-library-toggle';
+    libraryBtn.innerHTML = `${HISTORY_ICON}<span>Biblioteca</span><svg class="sidebar-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+    const libraryItems = [
+      { id: 'history', label: 'Historial', icon: HISTORY_ICON },
+      { id: 'watchLater', label: 'Guardados', icon: BOOKMARK_ICON },
+      { id: 'liked', label: 'Me gusta', icon: HEART_ICON },
+    ];
+
+    libraryItems.forEach(item => {
+      const btn = document.createElement('button');
+      btn.className = 'sidebar-library-item';
+      btn.innerHTML = `${item.icon}<span>${item.label}</span>`;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        console.log(`Navegar a: ${item.id}`);
+      });
+      this.libraryList.appendChild(btn);
+    });
+
+    libraryBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isExpanded = this.libraryList.classList.contains('expanded');
+      this.libraryList.classList.toggle('expanded', !isExpanded);
+      libraryBtn.classList.toggle('expanded', !isExpanded);
+    });
+
+    this.librarySection.append(libraryBtn, this.libraryList);
+
+    // Vilo Originals section
+    this.originalsSection.className = 'sidebar-section sidebar-originals';
+    this.originalsList.className = 'sidebar-originals-list';
+
+    const originalsBtn = document.createElement('button');
+    originalsBtn.className = 'sidebar-item sidebar-originals-toggle';
+    originalsBtn.innerHTML = `${PLAY_ICON}<span>Vilo Originals</span><svg class="sidebar-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+    const originalsItems = [
+      { id: 'vilo-under', label: 'Vilo Under', icon: PLAY_ICON },
+      { id: 'vilo-music', label: 'Vilo Music', icon: MUSIC_ICON },
+    ];
+
+    originalsItems.forEach(item => {
+      const btn = document.createElement('button');
+      btn.className = 'sidebar-originals-item';
+      btn.innerHTML = `${item.icon}<span>${item.label}</span>`;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        console.log(`Navegar a: ${item.id}`);
+      });
+      this.originalsList.appendChild(btn);
+    });
+
+    originalsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isExpanded = this.originalsList.classList.contains('expanded');
+      this.originalsList.classList.toggle('expanded', !isExpanded);
+      originalsBtn.classList.toggle('expanded', !isExpanded);
+    });
+
+    this.originalsSection.append(originalsBtn, this.originalsList);
+
+    // Settings section
+    this.settingsSection.className = 'sidebar-section sidebar-settings';
+
+    const settingsBtn = document.createElement('button');
+    settingsBtn.className = 'sidebar-item sidebar-settings-toggle';
+    settingsBtn.innerHTML = `${SETTINGS_ICON}<span>Configuración</span>`;
+
+    settingsBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      console.log('Navegar a: Configuración');
+    });
+
+    this.settingsSection.appendChild(settingsBtn);
+
+    // Help section
+    this.helpSection.className = 'sidebar-section sidebar-help';
+
+    const helpBtn = document.createElement('button');
+    helpBtn.className = 'sidebar-item sidebar-help-toggle';
+    helpBtn.innerHTML = `${HELP_ICON}<span>Ayuda</span><svg class="sidebar-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+
+    this.helpList.className = 'sidebar-help-list';
+
+    const helpItems = [
+      { id: 'faq', label: 'FAQ / Centro de ayuda', icon: QUESTION_ICON },
+      { id: 'report', label: 'Reportar problema', icon: FLAG_ICON },
+      { id: 'terms', label: 'Términos y privacidad', icon: FILE_ICON },
+    ];
+
+    helpItems.forEach(item => {
+      const btn = document.createElement('button');
+      btn.className = 'sidebar-help-item';
+      btn.innerHTML = `${item.icon}<span>${item.label}</span>`;
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        console.log(`Navegar a: ${item.id}`);
+      });
+      this.helpList.appendChild(btn);
+    });
+
+    helpBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isExpanded = this.helpList.classList.contains('expanded');
+      this.helpList.classList.toggle('expanded', !isExpanded);
+      helpBtn.classList.toggle('expanded', !isExpanded);
+    });
+
+    this.helpSection.append(helpBtn, this.helpList);
+
     // Show/hide based on current auth state
     const { isLoggedIn } = getAuthState();
     this.subscriptionsSection.style.display = isLoggedIn ? '' : 'none';
+    this.librarySection.style.display = isLoggedIn ? '' : 'none';
+    this.settingsSection.style.display = isLoggedIn ? '' : 'none';
     this.appearanceSection.style.display = isLoggedIn ? '' : 'none';
 
-    sidebar.append(this.subscriptionsSection, this.appearanceSection);
+    sidebar.append(this.subscriptionsSection, this.librarySection, this.originalsSection, this.settingsSection, this.helpSection, this.appearanceSection);
 
     return sidebar;
   }
@@ -199,6 +341,8 @@ export class Sidebar {
   private setupAuthSubscription() {
     subscribe((state) => {
       this.subscriptionsSection.style.display = state.isLoggedIn ? '' : 'none';
+      this.librarySection.style.display = state.isLoggedIn ? '' : 'none';
+      this.settingsSection.style.display = state.isLoggedIn ? '' : 'none';
       this.appearanceSection.style.display = state.isLoggedIn ? '' : 'none';
       if (state.isLoggedIn) {
         this.refreshSubscriptions();

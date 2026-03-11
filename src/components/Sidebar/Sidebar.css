@@ -183,3 +183,128 @@
   color: var(--text-muted);
   margin: 0;
 }
+
+/* Library section */
+.sidebar-library {
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-library-toggle.expanded .sidebar-chevron {
+  transform: rotate(180deg);
+}
+
+.sidebar-library-list {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.2s ease;
+}
+
+.sidebar-library-list.expanded {
+  max-height: 200px;
+}
+
+.sidebar-library-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px 10px 46px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s ease;
+  font-family: inherit;
+  text-align: left;
+}
+
+.sidebar-library-item:hover {
+  background: var(--bg-hover);
+}
+
+/* Vilo Originals section */
+.sidebar-originals {
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-originals-toggle.expanded .sidebar-chevron {
+  transform: rotate(180deg);
+}
+
+.sidebar-originals-list {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.2s ease;
+}
+
+.sidebar-originals-list.expanded {
+  max-height: 200px;
+}
+
+.sidebar-originals-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px 10px 46px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s ease;
+  font-family: inherit;
+  text-align: left;
+}
+
+.sidebar-originals-item:hover {
+  background: var(--bg-hover);
+}
+
+/* Settings section */
+.sidebar-settings {
+  border-top: 1px solid var(--border);
+}
+
+/* Help section */
+.sidebar-help {
+  border-top: 1px solid var(--border);
+}
+
+.sidebar-help-toggle.expanded .sidebar-chevron {
+  transform: rotate(180deg);
+}
+
+.sidebar-help-list {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.2s ease;
+}
+
+.sidebar-help-list.expanded {
+  max-height: 200px;
+}
+
+.sidebar-help-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px 10px 46px;
+  border: none;
+  background: none;
+  border-radius: 8px;
+  font-size: 0.84rem;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s ease;
+  font-family: inherit;
+  text-align: left;
+}
+
+.sidebar-help-item:hover {
+  background: var(--bg-hover);
+}
