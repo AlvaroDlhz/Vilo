@@ -231,8 +231,42 @@ function buildChannelData(): Map<string, ChannelData> {
 
 const channelMap = buildChannelData();
 
+function createFallbackChannelData(id: string, videos: VideoData[]): ChannelData | undefined {
+  if (videos.length === 0) return undefined;
+
+  const first = videos[0];
+  const name = first.channelName;
+  const gradientSeed = Math.abs(
+    Array.from(name).reduce((acc, ch) => acc + ch.charCodeAt(0), 0),
+  ) % 8;
+
+  return {
+    id,
+    name,
+    subscribers: first.subscribers || '0 suscriptores',
+    description: `Bienvenidos al canal ${name}.`,
+    joinedDate: 'ene 2020',
+    totalViews: first.views.replace(' vistas', ''),
+    location: 'N/A',
+    links: [],
+    bannerGradientIndex: gradientSeed,
+    playlists: [],
+    posts: [],
+  };
+}
+
 export function getChannelById(id: string): ChannelData | undefined {
-  return channelMap.get(id);
+  const mapped = channelMap.get(id);
+  if (mapped) return mapped;
+
+  const allVideos = getAllVideos();
+  const byUserId = allVideos.filter((v) => v.userId === id);
+  if (byUserId.length > 0) return createFallbackChannelData(id, byUserId);
+
+  const bySlug = allVideos.filter((v) => slugify(v.channelName) === id);
+  if (bySlug.length > 0) return createFallbackChannelData(id, bySlug);
+
+  return undefined;
 }
 
 export function getAllChannels(): ChannelData[] {
@@ -241,11 +275,21 @@ export function getAllChannels(): ChannelData[] {
 
 export function getVideosByChannel(channelId: string): VideoData[] {
   const channel = channelMap.get(channelId);
-  if (!channel) return [];
-  return getAllVideos().filter(v => v.channelName === channel.name);
+  if (channel) {
+    return getAllVideos().filter(v => v.channelName === channel.name);
+  }
+
+  return getAllVideos().filter(
+    (v) => v.userId === channelId || slugify(v.channelName) === channelId,
+  );
 }
 
 export function getChannelIdByName(channelName: string): string {
+  for (const [id, channel] of channelMap.entries()) {
+    if (channel.name.toLowerCase() === channelName.toLowerCase()) {
+      return id;
+    }
+  }
   return slugify(channelName);
 }
 

@@ -496,3 +496,41 @@ $$;
 create trigger on_subscription_change
   after insert or delete on subscriptions
   for each row execute function update_subscriber_count();
+
+-- =============================================
+-- Notifications
+-- =============================================
+
+create table if not exists notifications (
+  id uuid primary key default gen_random_uuid(),
+  recipient_id uuid references auth.users(id) on delete cascade not null,
+  actor_id uuid references auth.users(id) on delete set null,
+  type text not null check (type in ('comment', 'reply', 'subscription', 'video')),
+  entity_id text,
+  title text not null,
+  message text not null,
+  metadata jsonb default '{}'::jsonb,
+  created_at timestamptz default now(),
+  read_at timestamptz
+);
+
+create index if not exists notifications_recipient_created_idx
+  on notifications (recipient_id, created_at desc);
+
+alter table notifications enable row level security;
+
+create policy "Recipients can read notifications"
+  on notifications for select
+  using (auth.uid() = recipient_id);
+
+create policy "Recipients can update notifications"
+  on notifications for update
+  using (auth.uid() = recipient_id)
+  with check (auth.uid() = recipient_id);
+
+create policy "Authenticated users can insert notifications"
+  on notifications for insert
+  with check (
+    auth.role() = 'authenticated'
+    and (actor_id is null or actor_id = auth.uid())
+  );

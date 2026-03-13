@@ -65,6 +65,7 @@ if (savedTheme === 'dark') {
       const videoGrid = VideoGrid({
         videos: videos.map(v => ({
           thumbnail: v.thumbnailUrl || undefined,
+          videoUrl: v.videoUrl,
           title: v.title,
           channelName: v.channelName,
           channelAvatar: v.channelAvatar || undefined,
@@ -149,8 +150,7 @@ if (savedTheme === 'dark') {
     addRoute('/upload', renderUpload);
     addRoute('/watch/:id', renderWatch);
     addRoute('/channel/:id', (params) => {
-      // Replace instead of push to avoid back-button loop
-      window.location.replace(`#/channel/${params.id}/videos`);
+      renderChannel({ ...params, tab: 'videos' });
     });
     addRoute('/channel/:id/:tab', renderChannel);
     startRouter();

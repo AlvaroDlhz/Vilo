@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getAuthState } from '../data/authStore';
+import { createNotification } from './notifications';
 
 export async function toggleSubscription(channelUserId: string): Promise<boolean> {
   const { user } = getAuthState();
@@ -30,6 +31,16 @@ export async function toggleSubscription(channelUserId: string): Promise<boolean
       .from('subscriptions')
       .insert({ subscriber_id: user.id, channel_user_id: channelUserId });
     if (error) console.error('[subscriptions] Error inserting:', error);
+    if (!error) {
+      const actorName = getAuthState().profile?.display_name || getAuthState().profile?.username || 'Alguien';
+      await createNotification({
+        recipientId: channelUserId,
+        type: 'subscription',
+        entityId: channelUserId,
+        title: 'Nuevo suscriptor',
+        message: `${actorName} se suscribio a tu canal`,
+      });
+    }
     return !error;
   }
 }

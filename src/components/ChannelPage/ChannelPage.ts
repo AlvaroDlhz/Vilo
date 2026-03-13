@@ -1,9 +1,13 @@
-import './ChannelPage.css';
+﻿import './ChannelPage.css';
 import { ChannelData, getVideosByChannel } from '../../data/channelStore';
 import { ChannelTabs } from '../ChannelTabs/ChannelTabs';
 import { VideoGrid } from '../VideoGrid/VideoGrid';
+import { VideoCard } from '../VideoCard/VideoCard';
 import { hashColor } from '../../utils/avatarColor';
 import { navigate } from '../../router/router';
+import { getAuthState, subscribe as subscribeAuth } from '../../data/authStore';
+import { toggleSubscription, isSubscribed, getSubscriberCount } from '../../lib/subscriptions';
+import { supabase } from '../../lib/supabase';
 
 export interface ChannelPageOptions {
   channel: ChannelData;
@@ -20,6 +24,26 @@ const bannerGradients = [
   'linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)',
   'linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%)',
 ];
+
+function toHandleBase(name: string): string {
+  return name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9_]+/g, '')
+    .slice(0, 24) || 'canal';
+}
+
+function isLikelyUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function formatSubscriberCount(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M suscriptores`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K suscriptores`;
+  if (n === 1) return '1 suscriptor';
+  return `${n} suscriptores`;
+}
 
 export function ChannelPage(options: ChannelPageOptions): HTMLDivElement {
   const { channel, activeTab } = options;
@@ -39,25 +63,50 @@ export function ChannelPage(options: ChannelPageOptions): HTMLDivElement {
   const headerLeft = document.createElement('div');
   headerLeft.className = 'channel-header-left';
 
+  const videos = getVideosByChannel(channel.id);
+  const primaryVideo = videos[0];
+  const channelName = primaryVideo?.channelName || channel.name;
+  const channelUsername = primaryVideo?.channelUsername || toHandleBase(channelName);
+  const channelHandle = `@${channelUsername}`;
+  const fallbackSubscribers = primaryVideo?.subscribers || channel.subscribers || '0 suscriptores';
+  const channelVideoCount = videos.length;
+  const channelUserId = primaryVideo?.userId || (isLikelyUuid(channel.id) ? channel.id : null);
+  const isOwnChannel = !!(getAuthState().isLoggedIn && channelUserId && getAuthState().user?.id === channelUserId);
+  let subscriberCountValue: number | null = null;
+
   const avatar = document.createElement('div');
   avatar.className = 'channel-avatar';
-  avatar.textContent = channel.name.charAt(0).toUpperCase();
-  avatar.style.background = hashColor(channel.name);
+  const applyAvatarFallback = () => {
+    avatar.innerHTML = '';
+    avatar.textContent = channelName.charAt(0).toUpperCase();
+    avatar.style.background = hashColor(channelName);
+  };
+  if (primaryVideo?.channelAvatar) {
+    const img = document.createElement('img');
+    img.src = primaryVideo.channelAvatar;
+    img.alt = channelName;
+    img.addEventListener('error', applyAvatarFallback);
+    avatar.appendChild(img);
+  } else {
+    applyAvatarFallback();
+  }
 
   const headerText = document.createElement('div');
   headerText.className = 'channel-header-text';
 
   const name = document.createElement('h1');
   name.className = 'channel-name';
-  name.textContent = channel.name;
+  name.textContent = channelName;
 
-  const meta = document.createElement('span');
-  meta.className = 'channel-meta';
-  const videos = getVideosByChannel(channel.id);
-  const handle = '@' + channel.id;
-  meta.textContent = `${handle} · ${channel.subscribers} · ${videos.length} videos`;
+  const handle = document.createElement('span');
+  handle.className = 'channel-handle';
+  handle.textContent = channelHandle;
 
-  headerText.append(name, meta);
+  const counters = document.createElement('span');
+  counters.className = 'channel-counters';
+  counters.textContent = `${fallbackSubscribers} · ${channelVideoCount} videos`;
+
+  headerText.append(name, handle, counters);
 
   const subscribeBtn = document.createElement('button');
   subscribeBtn.className = 'channel-subscribe-btn';
@@ -67,11 +116,95 @@ export function ChannelPage(options: ChannelPageOptions): HTMLDivElement {
   sponsorBtn.className = 'channel-sponsor-btn';
   sponsorBtn.textContent = '$ Patrocinar';
 
-  headerLeft.append(avatar, headerText, subscribeBtn, sponsorBtn);
+  const editChannelBtn = document.createElement('button');
+  editChannelBtn.className = 'channel-edit-btn';
+  editChannelBtn.textContent = 'Editar canal';
+  editChannelBtn.addEventListener('click', () => {
+    navigate(`/channel/${channel.id}/about`);
+  });
+
+  headerLeft.append(avatar, headerText);
   header.appendChild(headerLeft);
 
-  // Tabs
+  // Tabs row (tabs left, actions right)
   const tabs = ChannelTabs({ channelId: channel.id, activeTab });
+  const tabsRow = document.createElement('div');
+  tabsRow.className = 'channel-tabs-row';
+  const tabsActions = document.createElement('div');
+  tabsActions.className = 'channel-tabs-actions';
+  tabsActions.append(subscribeBtn, sponsorBtn, editChannelBtn);
+  tabsRow.append(tabs, tabsActions);
+
+  const updateCounters = () => {
+    const subscriberText = subscriberCountValue === null
+      ? fallbackSubscribers
+      : formatSubscriberCount(subscriberCountValue);
+    counters.textContent = `${subscriberText} · ${channelVideoCount} videos`;
+  };
+
+  const setSubscribeVisualState = (subscribed: boolean) => {
+    subscribeBtn.textContent = subscribed ? 'Desuscribirse' : 'Suscribirse';
+    subscribeBtn.classList.toggle('subscribed', subscribed);
+  };
+
+  const refreshSubscriptionUi = async () => {
+    const auth = getAuthState();
+    const isOwnChannel = !!(auth.isLoggedIn && channelUserId && auth.user?.id === channelUserId);
+
+    editChannelBtn.style.display = isOwnChannel ? '' : 'none';
+    subscribeBtn.style.display = isOwnChannel ? 'none' : '';
+    sponsorBtn.style.display = isOwnChannel ? 'none' : '';
+
+    if (!channelUserId) {
+      subscribeBtn.disabled = true;
+      subscribeBtn.textContent = 'No disponible';
+      return;
+    }
+
+    const count = await getSubscriberCount(channelUserId);
+    subscriberCountValue = count;
+    updateCounters();
+
+    if (!auth.isLoggedIn) {
+      subscribeBtn.disabled = false;
+      setSubscribeVisualState(false);
+      return;
+    }
+
+    const subscribed = await isSubscribed(channelUserId);
+    setSubscribeVisualState(subscribed);
+    subscribeBtn.disabled = false;
+  };
+
+  subscribeBtn.addEventListener('click', async () => {
+    if (!channelUserId) return;
+    if (!getAuthState().isLoggedIn) return;
+    if (subscribeBtn.disabled) return;
+
+    subscribeBtn.disabled = true;
+    const wasSubscribed = subscribeBtn.classList.contains('subscribed');
+
+    setSubscribeVisualState(!wasSubscribed);
+    if (subscriberCountValue !== null) {
+      subscriberCountValue += wasSubscribed ? -1 : 1;
+      updateCounters();
+    }
+
+    const ok = await toggleSubscription(channelUserId);
+    if (!ok) {
+      setSubscribeVisualState(wasSubscribed);
+      if (subscriberCountValue !== null) {
+        subscriberCountValue += wasSubscribed ? 1 : -1;
+        updateCounters();
+      }
+    } else {
+      const count = await getSubscriberCount(channelUserId);
+      subscriberCountValue = count;
+      updateCounters();
+    }
+
+    subscribeBtn.disabled = false;
+  });
 
   // Content
   const content = document.createElement('div');
@@ -79,7 +212,7 @@ export function ChannelPage(options: ChannelPageOptions): HTMLDivElement {
 
   switch (activeTab) {
     case 'videos':
-      content.appendChild(renderVideosTab(channel));
+      content.appendChild(renderVideosTab(channel, isOwnChannel));
       break;
     case 'playlists':
       content.appendChild(renderPlaylistsTab(channel));
@@ -91,35 +224,439 @@ export function ChannelPage(options: ChannelPageOptions): HTMLDivElement {
       content.appendChild(renderAboutTab(channel));
       break;
     default:
-      content.appendChild(renderVideosTab(channel));
+      content.appendChild(renderVideosTab(channel, false));
   }
 
-  page.append(banner, header, tabs, content);
+  page.append(banner, header, tabsRow, content);
+
+  void refreshSubscriptionUi();
+  const unsubscribeAuth = subscribeAuth(() => {
+    void refreshSubscriptionUi();
+  });
+
+  let mounted = false;
+  const cleanupObserver = new MutationObserver(() => {
+    if (!mounted) {
+      if (document.contains(page)) mounted = true;
+      return;
+    }
+    if (!document.contains(page)) {
+      unsubscribeAuth();
+      cleanupObserver.disconnect();
+    }
+  });
+  cleanupObserver.observe(document.body, { childList: true, subtree: true });
+
   return page;
 }
 
-function renderVideosTab(channel: ChannelData): HTMLElement {
+function parseViewsToNumber(label: string): number {
+  const normalized = label.toLowerCase().replace(/\s+/g, '');
+  const match = normalized.match(/([\d.,]+)([mk])?/);
+  if (!match) return 0;
+
+  const raw = match[1].replace(/,/g, '.');
+  const value = Number.parseFloat(raw);
+  if (!Number.isFinite(value)) return 0;
+
+  const suffix = match[2];
+  if (suffix === 'm') return Math.round(value * 1_000_000);
+  if (suffix === 'k') return Math.round(value * 1_000);
+  return Math.round(value);
+}
+
+function formatCompactNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K`;
+  return String(n);
+}
+
+function normalizeForSearch(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+type OwnerVideoFilter = 'all' | 'oldest' | 'featured' | 'private' | 'public' | 'sponsors' | 'unlisted' | 'draft';
+
+type OwnerChannelVideo = (ReturnType<typeof getVideosByChannel>)[number] & {
+  visibility?: string;
+  audience?: string;
+  status?: string;
+  createdAt?: string;
+};
+
+function hashToGradientIndex(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) - hash) + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % bannerGradients.length;
+}
+
+function formatViewsLabel(count: number): string {
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, '')}M vistas`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1).replace(/\.0$/, '')}K vistas`;
+  return `${count} vista${count === 1 ? '' : 's'}`;
+}
+
+function formatUploadAgo(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  if (!Number.isFinite(then)) return 'hace un momento';
+
+  const diffMs = now - then;
+  const diffMin = Math.max(0, Math.floor(diffMs / 60_000));
+  const diffHour = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHour / 24);
+  const diffWeek = Math.floor(diffDay / 7);
+  const diffMonth = Math.floor(diffDay / 30);
+
+  if (diffMin < 1) return 'hace un momento';
+  if (diffMin < 60) return `hace ${diffMin} min`;
+  if (diffHour < 24) return `hace ${diffHour} hora${diffHour > 1 ? 's' : ''}`;
+  if (diffDay < 7) return `hace ${diffDay} dia${diffDay > 1 ? 's' : ''}`;
+  if (diffWeek < 5) return `hace ${diffWeek} semana${diffWeek > 1 ? 's' : ''}`;
+  return `hace ${diffMonth} mes${diffMonth > 1 ? 'es' : ''}`;
+}
+
+function formatPublishedDate(dateStr: string): string {
+  const d = new Date(dateStr);
+  if (!Number.isFinite(d.getTime())) return '';
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+function parsePublishedDate(label: string): number | null {
+  const normalized = normalizeForSearch(label);
+  const match = normalized.match(/^(\d{1,2})\s+([a-z]{3})\s+(\d{4})$/);
+  if (!match) return null;
+
+  const months: Record<string, number> = {
+    ene: 0, feb: 1, mar: 2, abr: 3, may: 4, jun: 5,
+    jul: 6, ago: 7, sep: 8, oct: 9, nov: 10, dic: 11,
+  };
+  const month = months[match[2]];
+  if (month === undefined) return null;
+
+  const day = Number.parseInt(match[1], 10);
+  const year = Number.parseInt(match[3], 10);
+  if (!Number.isFinite(day) || !Number.isFinite(year)) return null;
+  return new Date(year, month, day).getTime();
+}
+
+function parseUploadedAgoToTimestamp(label: string): number | null {
+  const normalized = normalizeForSearch(label).replace(/\s+/g, ' ').trim();
+  const match = normalized.match(/^hace\s+(\d+)\s+(min|hora|horas|dia|dias|semana|semanas|mes|meses)$/);
+  if (!match) return normalized === 'hace un momento' ? Date.now() : null;
+
+  const amount = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(amount)) return null;
+
+  let diffMs = 0;
+  switch (match[2]) {
+    case 'min':
+      diffMs = amount * 60_000;
+      break;
+    case 'hora':
+    case 'horas':
+      diffMs = amount * 3_600_000;
+      break;
+    case 'dia':
+    case 'dias':
+      diffMs = amount * 86_400_000;
+      break;
+    case 'semana':
+    case 'semanas':
+      diffMs = amount * 604_800_000;
+      break;
+    case 'mes':
+    case 'meses':
+      diffMs = amount * 2_592_000_000;
+      break;
+    default:
+      return null;
+  }
+
+  return Date.now() - diffMs;
+}
+
+function getVideoTimestamp(video: OwnerChannelVideo): number {
+  if (video.createdAt) {
+    const created = new Date(video.createdAt).getTime();
+    if (Number.isFinite(created)) return created;
+  }
+
+  const fromPublished = parsePublishedDate(video.publishedDate);
+  if (fromPublished !== null) return fromPublished;
+
+  const fromUploaded = parseUploadedAgoToTimestamp(video.uploadedAt);
+  if (fromUploaded !== null) return fromUploaded;
+
+  return 0;
+}
+
+function isSponsorsOnly(video: OwnerChannelVideo): boolean {
+  const audience = normalizeForSearch(video.audience || '');
+  if (audience === 'sponsors' || audience === 'members' || audience === 'patrocinadores') {
+    return true;
+  }
+
+  const tags = Array.isArray(video.tags) ? video.tags : [];
+  return tags.some((tag) => normalizeForSearch(tag).includes('patrocin'));
+}
+
+function getFeaturedVideos(videos: OwnerChannelVideo[]): OwnerChannelVideo[] {
+  if (videos.length <= 2) return [...videos];
+
+  const sorted = [...videos].sort((a, b) => {
+    const aScore = parseViewsToNumber(a.views) + ((Number.parseInt(a.likes, 10) || 0) * 20);
+    const bScore = parseViewsToNumber(b.views) + ((Number.parseInt(b.likes, 10) || 0) * 20);
+    return bScore - aScore;
+  });
+  const topCount = Math.max(1, Math.ceil(sorted.length * 0.35));
+  return sorted.slice(0, topCount);
+}
+
+function applyOwnerFilter(videos: OwnerChannelVideo[], filter: OwnerVideoFilter): OwnerChannelVideo[] {
+  switch (filter) {
+    case 'oldest':
+      return [...videos].sort((a, b) => getVideoTimestamp(a) - getVideoTimestamp(b));
+    case 'featured':
+      return getFeaturedVideos(videos);
+    case 'private':
+      return videos.filter((v) => v.visibility === 'private');
+    case 'public':
+      return videos.filter((v) => v.visibility === 'public');
+    case 'sponsors':
+      return videos.filter((v) => isSponsorsOnly(v));
+    case 'unlisted':
+      return videos.filter((v) => v.visibility === 'unlisted');
+    case 'draft':
+      return videos.filter((v) => v.status === 'draft');
+    case 'all':
+    default:
+      return [...videos];
+  }
+}
+
+async function fetchOwnerChannelVideos(channel: ChannelData, userId: string): Promise<OwnerChannelVideo[] | null> {
+  const { data, error } = await supabase
+    .from('user_videos')
+    .select('id, title, video_url, thumbnail_url, view_count, created_at, likes, dislikes, tags, category, visibility, audience, status')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false });
+
+  if (error) {
+    console.warn('[ChannelPage] Failed to load owner videos:', error.message);
+    return null;
+  }
+
+  if (!data || data.length === 0) return [];
+
+  return data.map((row) => ({
+    id: row.id,
+    userId,
+    title: row.title || 'Sin titulo',
+    description: '',
+    videoUrl: row.video_url || '',
+    thumbnailUrl: row.thumbnail_url || '',
+    channelName: channel.name,
+    channelUsername: toHandleBase(channel.name),
+    channelAvatar: '',
+    views: formatViewsLabel(row.view_count ?? 0),
+    uploadedAt: formatUploadAgo(row.created_at),
+    duration: '',
+    gradientIndex: hashToGradientIndex(row.id),
+    subscribers: channel.subscribers || '0 suscriptores',
+    likes: String(row.likes ?? 0),
+    dislikes: String(row.dislikes ?? 0),
+    publishedDate: formatPublishedDate(row.created_at),
+    category: row.category || '',
+    tags: row.tags || [],
+    visibility: row.visibility || 'public',
+    audience: row.audience || 'all',
+    status: row.status || 'published',
+    createdAt: row.created_at || undefined,
+  }));
+}
+
+function renderVideosTab(channel: ChannelData, isOwnChannel: boolean): HTMLElement {
   const videos = getVideosByChannel(channel.id);
 
   if (videos.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'channel-empty';
-    empty.textContent = 'Este canal no tiene videos todavía.';
+    empty.textContent = 'Este canal no tiene videos todavÃ­a.';
     return empty;
   }
 
-  return VideoGrid({
-    videos: videos.map(v => ({
+  const cardVideos = videos.map(v => ({
+      thumbnail: v.thumbnailUrl || undefined,
+      videoUrl: v.videoUrl,
       title: v.title,
       channelName: v.channelName,
+      channelAvatar: v.channelAvatar || undefined,
       views: v.views,
       uploadedAt: v.uploadedAt,
       duration: v.duration,
       gradientIndex: v.gradientIndex,
       onClick: () => navigate(`/watch/${v.id}`),
-    })),
-    columns: { default: 4, tablet: 3, mobile: 1 },
+  }));
+
+  if (!isOwnChannel) {
+    return VideoGrid({
+      videos: cardVideos,
+      columns: { default: 4, tablet: 3, mobile: 1 },
+    });
+  }
+
+  const main = document.createElement('div');
+  main.className = 'channel-owner-main';
+
+  const controls = document.createElement('div');
+  controls.className = 'channel-owner-controls';
+
+  const searchWrap = document.createElement('div');
+  searchWrap.className = 'channel-owner-search';
+  const searchInput = document.createElement('input');
+  searchInput.className = 'channel-owner-search-input';
+  searchInput.type = 'search';
+  searchInput.placeholder = 'Buscar videos de este canal';
+  searchInput.setAttribute('aria-label', 'Buscar videos de este canal');
+  searchWrap.appendChild(searchInput);
+
+  const filterWrap = document.createElement('div');
+  filterWrap.className = 'channel-owner-filter';
+  const filterSelect = document.createElement('select');
+  filterSelect.className = 'channel-owner-filter-select';
+  filterSelect.setAttribute('aria-label', 'Filtrar videos del canal');
+  const filterOptions: Array<{ value: OwnerVideoFilter; label: string }> = [
+    { value: 'all', label: 'Todos' },
+    { value: 'oldest', label: 'Mas antiguos' },
+    { value: 'featured', label: 'Destacados' },
+    { value: 'private', label: 'Privados' },
+    { value: 'public', label: 'Publicos' },
+    { value: 'sponsors', label: 'Para patrocinadores' },
+    { value: 'unlisted', label: 'No listados' },
+    { value: 'draft', label: 'Borradores' },
+  ];
+  filterOptions.forEach((optionData) => {
+    const option = document.createElement('option');
+    option.value = optionData.value;
+    option.textContent = optionData.label;
+    filterSelect.appendChild(option);
   });
+  filterWrap.appendChild(filterSelect);
+
+  controls.append(searchWrap, filterWrap);
+
+  const list = document.createElement('div');
+  list.className = 'channel-owner-video-list';
+
+  let ownerVideos: OwnerChannelVideo[] = videos.map((video) => ({
+    ...video,
+    visibility: 'public',
+    audience: 'all',
+    status: 'published',
+  }));
+  let searchQuery = '';
+  let selectedFilter: OwnerVideoFilter = 'all';
+
+  const renderOwnerVideoList = (filteredVideos: OwnerChannelVideo[]) => {
+    list.innerHTML = '';
+
+    if (filteredVideos.length === 0) {
+      const emptySearch = document.createElement('div');
+      emptySearch.className = 'channel-owner-search-empty';
+      emptySearch.textContent = 'No hay videos para el filtro seleccionado.';
+      list.appendChild(emptySearch);
+      return;
+    }
+
+    filteredVideos.forEach((video) => {
+    const row = document.createElement('div');
+    row.className = 'channel-owner-video-row';
+
+    const card = VideoCard({
+      thumbnail: video.thumbnailUrl || undefined,
+      videoUrl: video.videoUrl,
+      title: video.title,
+      channelName: video.channelName,
+      channelAvatar: video.channelAvatar || undefined,
+      views: video.views,
+      uploadedAt: video.uploadedAt,
+      duration: video.duration,
+      gradientIndex: video.gradientIndex,
+      variant: 'owner',
+      showChannelName: false,
+      onClick: () => navigate(`/watch/${video.id}`),
+    });
+
+    const insights = document.createElement('div');
+    insights.className = 'channel-owner-video-insights';
+
+    const viewsCount = parseViewsToNumber(video.views);
+    const likesCount = Number.parseInt(video.likes, 10) || 0;
+    const monetizationReady = viewsCount >= 1_000;
+    const likeRate = viewsCount > 0 ? Math.min(100, Math.round((likesCount / viewsCount) * 100)) : 0;
+
+    insights.innerHTML = `
+      <div class="channel-owner-card">
+        <h4>Rendimiento</h4>
+        <div class="channel-owner-metric"><span>Vistas</span><strong>${formatCompactNumber(viewsCount)}</strong></div>
+        <div class="channel-owner-metric"><span>Likes</span><strong>${formatCompactNumber(likesCount)}</strong></div>
+        <div class="channel-owner-metric"><span>Tasa likes</span><strong>${likeRate}%</strong></div>
+      </div>
+      <div class="channel-owner-card">
+        <h4>Monetizacion</h4>
+        <p class="channel-owner-card-main">${monetizationReady ? 'Activa' : 'En revision'}</p>
+        <p class="channel-owner-card-sub">${monetizationReady ? 'Este video puede monetizar.' : 'Necesita mas vistas para monetizar mejor.'}</p>
+      </div>
+    `;
+
+    row.append(card, insights);
+    list.appendChild(row);
+    });
+  };
+
+  const getFilteredVideos = (): OwnerChannelVideo[] => {
+    const searched = searchQuery
+      ? ownerVideos.filter((video) => normalizeForSearch(video.title).includes(searchQuery))
+      : [...ownerVideos];
+
+    return applyOwnerFilter(searched, selectedFilter);
+  };
+
+  const updateOwnerVideoList = () => {
+    renderOwnerVideoList(getFilteredVideos());
+  };
+
+  updateOwnerVideoList();
+
+  searchInput.addEventListener('input', () => {
+    searchQuery = normalizeForSearch(searchInput.value.trim());
+    updateOwnerVideoList();
+  });
+
+  filterSelect.addEventListener('change', () => {
+    selectedFilter = (filterSelect.value as OwnerVideoFilter);
+    updateOwnerVideoList();
+  });
+
+  if (isOwnChannel && getAuthState().user?.id) {
+    const userId = getAuthState().user!.id;
+    void fetchOwnerChannelVideos(channel, userId).then((loadedVideos) => {
+      if (!loadedVideos || loadedVideos.length === 0) return;
+      ownerVideos = loadedVideos;
+      updateOwnerVideoList();
+    });
+  }
+
+  main.append(controls, list);
+  return main;
 }
 
 function renderPlaylistsTab(channel: ChannelData): HTMLElement {
@@ -236,7 +773,7 @@ function renderAboutTab(channel: ChannelData): HTMLElement {
 
   const descTitle = document.createElement('h3');
   descTitle.className = 'channel-about-section-title';
-  descTitle.textContent = 'Descripción';
+  descTitle.textContent = 'DescripciÃ³n';
 
   const descText = document.createElement('p');
   descText.className = 'channel-about-description';
@@ -250,15 +787,15 @@ function renderAboutTab(channel: ChannelData): HTMLElement {
 
   const statsTitle = document.createElement('h3');
   statsTitle.className = 'channel-about-section-title';
-  statsTitle.textContent = 'Estadísticas';
+  statsTitle.textContent = 'EstadÃ­sticas';
 
   const statsList = document.createElement('div');
   statsList.className = 'channel-about-stats';
 
   const stats = [
-    { label: 'Se unió', value: channel.joinedDate },
+    { label: 'Se uniÃ³', value: channel.joinedDate },
     { label: 'Vistas totales', value: channel.totalViews },
-    { label: 'Ubicación', value: channel.location },
+    { label: 'UbicaciÃ³n', value: channel.location },
   ];
 
   stats.forEach(stat => {
@@ -297,3 +834,5 @@ function renderAboutTab(channel: ChannelData): HTMLElement {
 
   return about;
 }
+
+

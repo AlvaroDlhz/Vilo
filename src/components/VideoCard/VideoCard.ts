@@ -1,10 +1,12 @@
-import './VideoCard.css';
+﻿import './VideoCard.css';
 import { hashColor } from '../../utils/avatarColor';
 import { getChannelIdByName } from '../../data/channelStore';
 import { navigate } from '../../router/router';
+import { captureRandomFrameAsDataUrl } from '../../utils/videoThumbnail';
 
 export interface VideoCardOptions {
   thumbnail?: string;
+  videoUrl?: string;
   title: string;
   channelName: string;
   channelAvatar?: string;
@@ -13,7 +15,8 @@ export interface VideoCardOptions {
   duration?: string;
   progress?: number;
   gradientIndex?: number;
-  variant?: 'default' | 'compact';
+  variant?: 'default' | 'compact' | 'owner';
+  showChannelName?: boolean;
   onClick?: () => void;
 }
 
@@ -22,19 +25,50 @@ const gradientClasses = [
   'gradient-5', 'gradient-6', 'gradient-7', 'gradient-8',
 ];
 
+const generatedThumbnailCache = new Map<string, Promise<string | null>>();
+
+function getGeneratedThumbnail(videoUrl: string): Promise<string | null> {
+  const cached = generatedThumbnailCache.get(videoUrl);
+  if (cached) return cached;
+
+  const generation = captureRandomFrameAsDataUrl(videoUrl).catch(() => null);
+  generatedThumbnailCache.set(videoUrl, generation);
+  return generation;
+}
+
+async function applyGeneratedThumbnail(
+  container: HTMLDivElement,
+  videoUrl: string,
+  title: string
+): Promise<void> {
+  const frame = await getGeneratedThumbnail(videoUrl);
+  if (!frame || !container.isConnected) return;
+  if (container.querySelector('.video-card-thumbnail-img')) return;
+
+  const img = document.createElement('img');
+  img.className = 'video-card-thumbnail-img';
+  img.src = frame;
+  img.alt = title;
+  img.loading = 'lazy';
+  container.prepend(img);
+}
+
 export function VideoCard(options: VideoCardOptions): HTMLDivElement {
   const {
-    thumbnail, title, channelName, channelAvatar, views,
-    uploadedAt, duration, progress, gradientIndex = 0, variant = 'default', onClick,
+    thumbnail, videoUrl, title, channelName, channelAvatar, views,
+    uploadedAt, duration, progress, gradientIndex = 0, variant = 'default', showChannelName = true, onClick,
   } = options;
 
   const isCompact = variant === 'compact';
+  const isOwner = variant === 'owner';
 
-  // ── Card ──
   const card = document.createElement('div');
-  card.className = isCompact ? 'video-card video-card--compact' : 'video-card';
+  card.className = [
+    'video-card',
+    isCompact ? 'video-card--compact' : '',
+    isOwner ? 'video-card--owner' : '',
+  ].filter(Boolean).join(' ');
 
-  // ── Thumbnail ──
   const thumb = document.createElement('div');
   if (thumbnail) {
     thumb.className = 'video-card-thumbnail';
@@ -46,19 +80,21 @@ export function VideoCard(options: VideoCardOptions): HTMLDivElement {
     thumb.appendChild(img);
   } else {
     thumb.className = `video-card-thumbnail ${gradientClasses[gradientIndex % gradientClasses.length]}`;
+    if (videoUrl) {
+      void applyGeneratedThumbnail(thumb, videoUrl, title);
+    }
   }
 
-  // Action buttons (appear on hover)
   const actions = document.createElement('div');
   actions.className = 'thumbnail-actions';
 
-  const watchLater = createActionBtn('Ver más tarde', `
+  const watchLater = createActionBtn('Ver mas tarde', `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
     </svg>
   `);
 
-  const menuBtn = createActionBtn('Más opciones', `
+  const menuBtn = createActionBtn('Mas opciones', `
     <svg viewBox="0 0 24 24" fill="currentColor">
       <circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/>
     </svg>
@@ -67,7 +103,6 @@ export function VideoCard(options: VideoCardOptions): HTMLDivElement {
   actions.append(watchLater, menuBtn);
   thumb.appendChild(actions);
 
-  // Duration badge
   if (duration) {
     const dur = document.createElement('span');
     dur.className = 'video-card-duration';
@@ -75,7 +110,6 @@ export function VideoCard(options: VideoCardOptions): HTMLDivElement {
     thumb.appendChild(dur);
   }
 
-  // Progress bar
   if (progress !== undefined && progress > 0) {
     const bar = document.createElement('div');
     bar.className = 'video-card-progress';
@@ -86,11 +120,9 @@ export function VideoCard(options: VideoCardOptions): HTMLDivElement {
     thumb.appendChild(bar);
   }
 
-  // ── Info ──
   const info = document.createElement('div');
   info.className = 'video-card-info';
 
-  // Text block
   const text = document.createElement('div');
   text.className = 'video-card-text';
 
@@ -98,23 +130,25 @@ export function VideoCard(options: VideoCardOptions): HTMLDivElement {
   titleEl.className = 'video-card-title';
   titleEl.textContent = title;
 
-  const channelEl = document.createElement('p');
-  channelEl.className = 'video-card-channel';
-  channelEl.textContent = channelName;
-  channelEl.style.cursor = 'pointer';
-  channelEl.addEventListener('click', (e) => {
-    e.stopPropagation();
-    navigate(`/channel/${getChannelIdByName(channelName)}`);
-  });
-
   const metaEl = document.createElement('p');
   metaEl.className = 'video-card-meta';
-  metaEl.textContent = `${views} \u00B7 ${uploadedAt}`;
+  metaEl.textContent = `${views} · ${uploadedAt}`;
 
-  text.append(titleEl, channelEl, metaEl);
+  text.appendChild(titleEl);
+  if (showChannelName) {
+    const channelEl = document.createElement('p');
+    channelEl.className = 'video-card-channel';
+    channelEl.textContent = channelName;
+    channelEl.style.cursor = 'pointer';
+    channelEl.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigate(`/channel/${getChannelIdByName(channelName)}`);
+    });
+    text.appendChild(channelEl);
+  }
+  text.appendChild(metaEl);
 
-  if (!isCompact) {
-    // Avatar (only in default variant)
+  if (variant === 'default') {
     const avatar = document.createElement('div');
     avatar.className = 'video-card-avatar';
     avatar.style.cursor = 'pointer';
@@ -136,7 +170,6 @@ export function VideoCard(options: VideoCardOptions): HTMLDivElement {
     info.append(text);
   }
 
-  // ── Assemble ──
   card.append(thumb, info);
 
   if (onClick) {

@@ -1,12 +1,7 @@
 .channel-tabs {
   display: flex;
   gap: 4px;
-  border-bottom: 1px solid var(--border);
-  padding: 0 24px;
-  background: var(--bg-surface);
-  position: sticky;
-  top: 84px;
-  z-index: 10;
+  align-items: flex-end;
 }
 
 .channel-tab {
@@ -32,7 +27,6 @@
 
 @media (max-width: 600px) {
   .channel-tabs {
-    padding: 0 12px;
     gap: 0;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;

@@ -9,6 +9,16 @@ import { Feed } from '../../data/feedStore';
 import { hashColor } from '../../utils/avatarColor';
 import { subscribe, getAuthState, type AuthState } from '../../data/authStore';
 import { signOut } from '../../lib/auth';
+import {
+  fetchNotifications,
+  markAllNotificationsRead,
+  markNotificationRead,
+  subscribeToNotifications,
+  getBrowserNotificationPermission,
+  requestBrowserNotificationPermission,
+  showBrowserNotification,
+  type AppNotification,
+} from '../../lib/notifications';
 import { navigate } from '../../router/router';
 import plusIcon from '/assets/plus.svg?raw';
 import notifIcon from '/assets/notifications.svg?raw';
@@ -118,15 +128,10 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
   const profileDropdownInner = document.createElement('div');
   profileDropdown.appendChild(profileDropdownInner);
 
-  // --- Sample data ---
-  const notifications = [
-    { name: 'TechCode', text: 'TechCode subió: Nuevo tutorial de TypeScript', time: 'Hace 20 min', unread: true },
-    { name: 'María López', text: 'María López comentó en tu video', time: 'Hace 1 hora', unread: true },
-    { name: 'Carlos García', text: 'Carlos García le dio like a tu comentario', time: 'Hace 3 horas', unread: false },
-    { name: 'Ana Martínez', text: 'Ana Martínez respondió a tu comentario', time: 'Hace 5 horas', unread: true },
-    { name: 'Vilo', text: 'Tu video alcanzó 1K vistas', time: 'Ayer', unread: false },
-    { name: 'Pedro Sánchez', text: 'Pedro Sánchez se suscribió a tu canal', time: 'Hace 2 días', unread: false },
-  ];
+  let notifications: AppNotification[] = [];
+  let notificationsTeardown: (() => void) | null = null;
+  let notificationsUserId: string | null = null;
+  let notificationsLoaded = false;
 
   const chats = [
     { name: 'María López', message: 'Hola! Vi tu último video, está genial', time: 'Hace 10 min', unread: true },
@@ -187,6 +192,178 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
     authDropdown.classList.remove('open');
   }
 
+  function formatNotificationTime(dateStr: string): string {
+    const then = new Date(dateStr).getTime();
+    const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+    if (diffSec < 60) return 'Ahora';
+    if (diffSec < 3600) return `Hace ${Math.floor(diffSec / 60)} min`;
+    if (diffSec < 86400) return `Hace ${Math.floor(diffSec / 3600)} h`;
+    if (diffSec < 604800) return `Hace ${Math.floor(diffSec / 86400)} d`;
+    return new Date(dateStr).toLocaleDateString();
+  }
+
+  function teardownNotifications() {
+    if (notificationsTeardown) {
+      notificationsTeardown();
+      notificationsTeardown = null;
+    }
+    notificationsUserId = null;
+    notificationsLoaded = false;
+    notifications = [];
+  }
+
+  async function refreshNotificationList(userId: string) {
+    const items = await fetchNotifications(20);
+    if (notificationsUserId !== userId) return;
+    notifications = items;
+    notificationsLoaded = true;
+    renderNotificationDropdown(true);
+  }
+
+  function ensureNotificationFeed(userId: string) {
+    if (notificationsUserId === userId && notificationsTeardown) return;
+
+    teardownNotifications();
+    notificationsUserId = userId;
+    notificationsLoaded = false;
+    notificationsTeardown = subscribeToNotifications(userId, (event, notification) => {
+      if (event === 'INSERT') {
+        notifications = [notification, ...notifications.filter((item) => item.id !== notification.id)].slice(0, 20);
+        showBrowserNotification(notification);
+      } else {
+        notifications = notifications.map((item) => (item.id === notification.id ? notification : item));
+      }
+      renderNotificationDropdown(true);
+    });
+  }
+
+  function renderNotificationDropdown(isLoggedIn: boolean) {
+    notifDropdownInner.innerHTML = '';
+    const notifHeader = document.createElement('div');
+    notifHeader.className = 'navbar-dropdown-header';
+    const notifTitle = document.createElement('span');
+    notifTitle.className = 'navbar-dropdown-header-title';
+    notifTitle.textContent = 'Notificaciones';
+
+    if (isLoggedIn) {
+      const unreadCount = notifications.filter((item) => !item.read_at).length;
+      notifBadge.textContent = String(unreadCount);
+      notifBadge.style.display = unreadCount === 0 ? 'none' : '';
+
+      const headerActions = document.createElement('div');
+      headerActions.className = 'navbar-dropdown-header-actions';
+
+      if (getBrowserNotificationPermission() === 'default') {
+        const enableBtn = document.createElement('button');
+        enableBtn.className = 'navbar-dropdown-header-action';
+        enableBtn.textContent = 'Activar alertas';
+        enableBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await requestBrowserNotificationPermission();
+          renderNotificationDropdown(true);
+        });
+        headerActions.appendChild(enableBtn);
+      }
+
+      const markReadBtn = document.createElement('button');
+      markReadBtn.className = 'navbar-dropdown-header-action';
+      markReadBtn.textContent = 'Marcar como leidas';
+      markReadBtn.disabled = unreadCount === 0;
+      markReadBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const ok = await markAllNotificationsRead();
+        if (!ok) return;
+        const readAt = new Date().toISOString();
+        notifications = notifications.map((item) => ({ ...item, read_at: item.read_at ?? readAt }));
+        renderNotificationDropdown(true);
+      });
+      headerActions.appendChild(markReadBtn);
+
+      notifHeader.append(notifTitle, headerActions);
+      notifDropdownInner.appendChild(notifHeader);
+
+      if (notifications.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'navbar-dropdown-empty';
+        empty.textContent = 'Aun no tienes notificaciones.';
+        notifDropdownInner.appendChild(empty);
+        return;
+      }
+
+      notifications.forEach((notification) => {
+        const item = document.createElement('div');
+        item.className = `navbar-dropdown-item${notification.read_at ? '' : ' unread'}`;
+
+        const actorName = notification.actor_profile?.display_name
+          || notification.actor_profile?.username
+          || 'Vilo';
+
+        const avatar = document.createElement('div');
+        avatar.className = 'navbar-dropdown-item-avatar';
+        avatar.style.background = hashColor(actorName);
+
+        if (notification.actor_profile?.avatar_url) {
+          avatar.style.background = 'transparent';
+          const img = document.createElement('img');
+          img.src = notification.actor_profile.avatar_url;
+          img.alt = actorName;
+          img.style.width = '100%';
+          img.style.height = '100%';
+          img.style.borderRadius = '50%';
+          img.style.objectFit = 'cover';
+          avatar.appendChild(img);
+        } else {
+          avatar.textContent = actorName.charAt(0).toUpperCase();
+        }
+
+        const content = document.createElement('div');
+        content.className = 'navbar-dropdown-item-content';
+        const text = document.createElement('span');
+        text.className = 'navbar-dropdown-item-text';
+        text.textContent = notification.message;
+        const time = document.createElement('span');
+        time.className = 'navbar-dropdown-item-time';
+        time.textContent = formatNotificationTime(notification.created_at);
+        content.append(text, time);
+
+        item.append(avatar, content);
+
+        if (!notification.read_at) {
+          const dot = document.createElement('span');
+          dot.className = 'navbar-dropdown-unread-dot';
+          item.appendChild(dot);
+        }
+
+        item.addEventListener('click', () => {
+          if (notification.read_at) return;
+          notification.read_at = new Date().toISOString();
+          renderNotificationDropdown(true);
+          void markNotificationRead(notification.id);
+        });
+
+        notifDropdownInner.appendChild(item);
+      });
+    } else {
+      notifBadge.style.display = 'none';
+      notifHeader.appendChild(notifTitle);
+
+      const notifCta = document.createElement('div');
+      notifCta.className = 'navbar-dropdown-cta';
+      notifCta.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`;
+      const notifCtaText = document.createElement('p');
+      notifCtaText.textContent = 'Crea una cuenta en Vilo para recibir notificaciones';
+      const notifCtaBtn = document.createElement('button');
+      notifCtaBtn.className = 'navbar-dropdown-cta-btn';
+      notifCtaBtn.textContent = 'Crear cuenta';
+      notifCtaBtn.addEventListener('click', () => {
+        closeAllDropdowns();
+        authModal.showRegister();
+      });
+      notifCta.append(notifCtaText, notifCtaBtn);
+      notifDropdownInner.append(notifHeader, notifCta);
+    }
+  }
+
   publishBtn.addEventListener('click', (e) => {
     e.stopPropagation();
     const wasOpen = publishDropdown.classList.contains('open');
@@ -200,6 +377,9 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
     const wasOpen = notifDropdown.classList.contains('open');
     closeAllDropdowns();
     if (!wasOpen) notifDropdown.classList.add('open');
+    if (getAuthState().isLoggedIn && getBrowserNotificationPermission() === 'default') {
+      void requestBrowserNotificationPermission();
+    }
   });
 
   chatBtn.addEventListener('click', (e) => {
@@ -328,6 +508,15 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
     authDropdown.style.display = isLoggedIn ? 'none' : '';
     profileDropdown.style.display = isLoggedIn ? '' : 'none';
 
+    if (isLoggedIn && authState.user) {
+      ensureNotificationFeed(authState.user.id);
+      if (!notificationsLoaded) {
+        void refreshNotificationList(authState.user.id);
+      }
+    } else {
+      teardownNotifications();
+    }
+
     // --- Publish dropdown content ---
     publishDropdownInner.innerHTML = '';
     const publishHeader = document.createElement('div');
@@ -340,20 +529,10 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
     if (isLoggedIn) {
       const videoItem = document.createElement('div');
       videoItem.className = 'navbar-dropdown-item';
-      const videoAvatar = document.createElement('div');
-      videoAvatar.className = 'navbar-dropdown-item-avatar';
-      videoAvatar.style.background = '#e53935';
-      videoAvatar.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>`;
-      const videoContent = document.createElement('div');
-      videoContent.className = 'navbar-dropdown-item-content';
       const videoText = document.createElement('span');
       videoText.className = 'navbar-dropdown-item-text';
       videoText.textContent = 'Subir video';
-      const videoDesc = document.createElement('span');
-      videoDesc.className = 'navbar-dropdown-item-time';
-      videoDesc.textContent = 'Comparte un video...';
-      videoContent.append(videoText, videoDesc);
-      videoItem.append(videoAvatar, videoContent);
+      videoItem.append(videoText);
       videoItem.addEventListener('click', () => {
         publishDropdown.classList.remove('open');
         navigate('/upload');
@@ -361,20 +540,10 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
 
       const postItem = document.createElement('div');
       postItem.className = 'navbar-dropdown-item';
-      const postAvatar = document.createElement('div');
-      postAvatar.className = 'navbar-dropdown-item-avatar';
-      postAvatar.style.background = '#3b82f6';
-      postAvatar.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`;
-      const postContent = document.createElement('div');
-      postContent.className = 'navbar-dropdown-item-content';
       const postText = document.createElement('span');
       postText.className = 'navbar-dropdown-item-text';
       postText.textContent = 'Crear post';
-      const postDesc = document.createElement('span');
-      postDesc.className = 'navbar-dropdown-item-time';
-      postDesc.textContent = 'Escribe para tu comunidad';
-      postContent.append(postText, postDesc);
-      postItem.append(postAvatar, postContent);
+      postItem.append(postText);
       postItem.addEventListener('click', () => {
         publishDropdown.classList.remove('open');
       });
@@ -398,85 +567,7 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
     }
 
     // --- Notification dropdown content ---
-    notifDropdownInner.innerHTML = '';
-    const notifHeader = document.createElement('div');
-    notifHeader.className = 'navbar-dropdown-header';
-    const notifTitle = document.createElement('span');
-    notifTitle.className = 'navbar-dropdown-header-title';
-    notifTitle.textContent = 'Notificaciones';
-
-    if (isLoggedIn) {
-      const notifUnreadCount = notifications.filter(n => n.unread).length;
-      notifBadge.textContent = String(notifUnreadCount);
-      notifBadge.style.display = notifUnreadCount === 0 ? 'none' : '';
-
-      const markReadBtn = document.createElement('button');
-      markReadBtn.className = 'navbar-dropdown-header-action';
-      markReadBtn.textContent = 'Marcar como leídas';
-      notifHeader.append(notifTitle, markReadBtn);
-      notifDropdownInner.appendChild(notifHeader);
-
-      notifications.forEach(n => {
-        const item = document.createElement('div');
-        item.className = 'navbar-dropdown-item' + (n.unread ? ' unread' : '');
-
-        const avatar = document.createElement('div');
-        avatar.className = 'navbar-dropdown-item-avatar';
-        avatar.style.background = hashColor(n.name);
-        avatar.textContent = n.name.charAt(0).toUpperCase();
-
-        const content = document.createElement('div');
-        content.className = 'navbar-dropdown-item-content';
-        const text = document.createElement('span');
-        text.className = 'navbar-dropdown-item-text';
-        text.textContent = n.text;
-        const time = document.createElement('span');
-        time.className = 'navbar-dropdown-item-time';
-        time.textContent = n.time;
-        content.append(text, time);
-
-        item.append(avatar, content);
-        if (n.unread) {
-          const dot = document.createElement('span');
-          dot.className = 'navbar-dropdown-unread-dot';
-          item.appendChild(dot);
-        }
-        notifDropdownInner.appendChild(item);
-      });
-
-      const notifFooter = document.createElement('div');
-      notifFooter.className = 'navbar-dropdown-footer';
-      notifFooter.textContent = 'Ver todas las notificaciones';
-      notifDropdownInner.appendChild(notifFooter);
-
-      markReadBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        notifDropdownInner.querySelectorAll('.navbar-dropdown-item.unread').forEach(item => {
-          item.classList.remove('unread');
-          const dot = item.querySelector('.navbar-dropdown-unread-dot');
-          if (dot) dot.remove();
-        });
-        notifBadge.style.display = 'none';
-      });
-    } else {
-      notifBadge.style.display = 'none';
-      notifHeader.appendChild(notifTitle);
-
-      const notifCta = document.createElement('div');
-      notifCta.className = 'navbar-dropdown-cta';
-      notifCta.innerHTML = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>`;
-      const notifCtaText = document.createElement('p');
-      notifCtaText.textContent = 'Crea una cuenta en Vilo para recibir notificaciones';
-      const notifCtaBtn = document.createElement('button');
-      notifCtaBtn.className = 'navbar-dropdown-cta-btn';
-      notifCtaBtn.textContent = 'Crear cuenta';
-      notifCtaBtn.addEventListener('click', () => {
-        closeAllDropdowns();
-        authModal.showRegister();
-      });
-      notifCta.append(notifCtaText, notifCtaBtn);
-      notifDropdownInner.append(notifHeader, notifCta);
-    }
+    renderNotificationDropdown(isLoggedIn);
 
     // --- Chat dropdown content ---
     chatDropdownInner.innerHTML = '';
@@ -602,10 +693,25 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
   updateNavbarForAuth(getAuthState());
 
   // Subscribe to auth state changes
-  subscribe((authState) => {
+  const unsubscribeAuth = subscribe((authState) => {
     closeAllDropdowns();
     updateNavbarForAuth(authState);
   });
+
+  // Cleanup realtime listeners when navbar is removed from DOM
+  let mounted = false;
+  const cleanupObserver = new MutationObserver(() => {
+    if (!mounted) {
+      if (document.contains(wrapper)) mounted = true;
+      return;
+    }
+    if (!document.contains(wrapper)) {
+      teardownNotifications();
+      unsubscribeAuth();
+      cleanupObserver.disconnect();
+    }
+  });
+  cleanupObserver.observe(document.body, { childList: true, subtree: true });
 
   return wrapper;
 }

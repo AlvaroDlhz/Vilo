@@ -371,6 +371,12 @@
   color: var(--text);
 }
 
+.navbar-dropdown-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .navbar-dropdown-header-action {
   font-size: 0.75rem;
   color: var(--text-muted);
@@ -383,6 +389,11 @@
 
 .navbar-dropdown-header-action:hover {
   color: var(--text);
+}
+
+.navbar-dropdown-header-action:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 .navbar-dropdown-item {
@@ -445,6 +456,12 @@
   border-radius: 50%;
   background: #3b82f6;
   flex-shrink: 0;
+}
+
+.navbar-dropdown-empty {
+  padding: 16px 14px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
 }
 
 /* Publish dropdown positioning */

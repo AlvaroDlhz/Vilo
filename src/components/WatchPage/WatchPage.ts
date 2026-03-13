@@ -87,6 +87,7 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
   recommended.forEach(rec => {
     const card = VideoCard({
       thumbnail: rec.thumbnailUrl || undefined,
+      videoUrl: rec.videoUrl,
       title: rec.title,
       channelName: rec.channelName,
       channelAvatar: rec.channelAvatar || undefined,

@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { getAuthState } from '../data/authStore';
+import { createNotification } from './notifications';
 
 export interface Comment {
   id: string;
@@ -38,6 +39,63 @@ async function attachProfiles(rows: any[]): Promise<Comment[]> {
     ...r,
     profile: profileMap.get(r.user_id) || null,
   })) as Comment[];
+}
+
+function getActorDisplayName(): string {
+  const { profile } = getAuthState();
+  return profile?.display_name || profile?.username || 'Alguien';
+}
+
+function truncateForNotification(text: string, maxLength = 90): string {
+  const clean = text.trim().replace(/\s+/g, ' ');
+  if (clean.length <= maxLength) return clean;
+  return `${clean.slice(0, maxLength - 3)}...`;
+}
+
+async function notifyForComment(params: {
+  videoId: string;
+  text: string;
+  parentId: string | null;
+  commentId: string;
+}): Promise<void> {
+  const { user } = getAuthState();
+  if (!user) return;
+
+  const recipients = new Set<string>();
+  const { videoId, text, parentId, commentId } = params;
+
+  const { data: videoRow } = await supabase
+    .from('user_videos')
+    .select('user_id')
+    .eq('id', videoId)
+    .maybeSingle();
+
+  if (videoRow?.user_id) recipients.add(videoRow.user_id);
+
+  if (parentId) {
+    const { data: parentRow } = await supabase
+      .from('comments')
+      .select('user_id')
+      .eq('id', parentId)
+      .maybeSingle();
+    if (parentRow?.user_id) recipients.add(parentRow.user_id);
+  }
+
+  const title = parentId ? 'Nueva respuesta' : 'Nuevo comentario';
+  const actorName = getActorDisplayName();
+  const messagePrefix = parentId ? 'respondio' : 'comento';
+  const message = `${actorName} ${messagePrefix}: ${truncateForNotification(text)}`;
+
+  for (const recipientId of recipients) {
+    await createNotification({
+      recipientId,
+      type: parentId ? 'reply' : 'comment',
+      entityId: commentId,
+      title,
+      message,
+      metadata: { videoId, parentId: parentId ?? null },
+    });
+  }
 }
 
 export async function fetchComments(videoId: string): Promise<Comment[]> {
@@ -112,6 +170,13 @@ export async function postComment(videoId: string, text: string, parentId?: stri
     return null;
   }
   if (!data) return null;
+
+  void notifyForComment({
+    videoId,
+    text,
+    parentId: parentId ?? null,
+    commentId: data.id,
+  });
 
   const results = await attachProfiles([data]);
   return results[0] || null;
