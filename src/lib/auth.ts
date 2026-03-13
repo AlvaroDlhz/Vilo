@@ -46,11 +46,23 @@ export async function signIn(email: string, password: string) {
 }
 
 export async function signOut() {
-  return supabase.auth.signOut();
+  // Local scope is more resilient for SPA logout UX (clears current session immediately).
+  return supabase.auth.signOut({ scope: 'local' });
 }
 
 export async function getSession() {
   return supabase.auth.getSession();
+}
+
+export async function setSession(accessToken: string, refreshToken: string) {
+  return supabase.auth.setSession({
+    access_token: accessToken,
+    refresh_token: refreshToken,
+  });
+}
+
+export async function getUserFromAccessToken(accessToken: string) {
+  return supabase.auth.getUser(accessToken);
 }
 
 export async function getProfile(userId: string): Promise<Profile | null> {

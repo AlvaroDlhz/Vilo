@@ -7,7 +7,14 @@ import { FeedsMenu } from '../FeedsMenu/FeedsMenu';
 import { AuthModal } from '../AuthModal/AuthModal';
 import { Feed } from '../../data/feedStore';
 import { hashColor } from '../../utils/avatarColor';
-import { subscribe, getAuthState, type AuthState } from '../../data/authStore';
+import {
+  subscribe,
+  getAuthState,
+  getSavedAccounts,
+  switchToSavedAccount,
+  type AuthState,
+  type SavedAccount,
+} from '../../data/authStore';
 import { signOut } from '../../lib/auth';
 import {
   fetchNotifications,
@@ -335,10 +342,21 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
         }
 
         item.addEventListener('click', () => {
-          if (notification.read_at) return;
-          notification.read_at = new Date().toISOString();
-          renderNotificationDropdown(true);
-          void markNotificationRead(notification.id);
+          if (!notification.read_at) {
+            notification.read_at = new Date().toISOString();
+            renderNotificationDropdown(true);
+            void markNotificationRead(notification.id);
+          }
+
+          const metadataVideoId = typeof notification.metadata?.videoId === 'string'
+            ? notification.metadata.videoId
+            : null;
+          const targetVideoId = notification.entity_id || metadataVideoId;
+
+          if (notification.type === 'video' && targetVideoId) {
+            closeAllDropdowns();
+            navigate(`/watch/${targetVideoId}`);
+          }
         });
 
         notifDropdownInner.appendChild(item);
@@ -642,10 +660,15 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
     // --- Profile dropdown content ---
     profileDropdownInner.innerHTML = '';
     if (isLoggedIn) {
-      const userName = profile?.display_name || 'Usuario';
-      const userEmail = profile?.email || '';
+      const fallbackEmail = authState.user?.email || '';
+      const fallbackDisplayName = authState.user?.user_metadata?.display_name
+        || (fallbackEmail ? fallbackEmail.split('@')[0] : '');
+      const fallbackUsername = authState.user?.user_metadata?.username || '';
+
+      const userName = profile?.display_name || fallbackDisplayName || 'Usuario';
+      const userEmail = profile?.email || fallbackEmail;
       const userAvatarUrl = profile?.avatar_url
-        || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.username || 'user'}`;
+        || `https://api.dicebear.com/7.x/avataaars/svg?seed=${profile?.username || fallbackUsername || userName || 'user'}`;
 
       const header = document.createElement('div');
       header.className = 'profile-dropdown-header';
@@ -660,7 +683,8 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
       headerName.textContent = userName;
       const headerUsername = document.createElement('span');
       headerUsername.className = 'profile-dropdown-username';
-      headerUsername.textContent = profile?.username ? `@${profile.username}` : '';
+      const effectiveUsername = profile?.username || fallbackUsername;
+      headerUsername.textContent = effectiveUsername ? `@${effectiveUsername}` : '';
       const headerEmail = document.createElement('span');
       headerEmail.className = 'profile-dropdown-email';
       headerEmail.textContent = userEmail;
@@ -672,20 +696,120 @@ export function Navbar(options: NavbarOptions = {}): HTMLElement {
       const channelItem = document.createElement('div');
       channelItem.className = 'profile-dropdown-item';
       channelItem.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><span>Tu canal</span>`;
-
-      const switchItem = document.createElement('div');
-      switchItem.className = 'profile-dropdown-item';
-      switchItem.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Cambiar de cuenta</span>`;
-
-      const logoutItem = document.createElement('div');
-      logoutItem.className = 'profile-dropdown-item';
-      logoutItem.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Cerrar sesión</span>`;
-      logoutItem.addEventListener('click', async () => {
+      channelItem.addEventListener('click', () => {
         profileDropdown.classList.remove('open');
-        await signOut();
+        navigate(`/channel/${authState.user?.id || profile?.id || ''}`);
       });
 
-      profileDropdownInner.append(header, hr, channelItem, switchItem, logoutItem);
+      const switchSection = document.createElement('div');
+      switchSection.className = 'profile-switch-section';
+
+      const switchItem = document.createElement('div');
+      switchItem.className = 'profile-dropdown-item profile-dropdown-item--submenu';
+      switchItem.innerHTML = `<span class="profile-dropdown-item-main"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg><span>Cambiar de cuenta</span></span><svg class="profile-dropdown-submenu-arrow" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 6 15 12 9 18"/></svg>`;
+
+      const switchDropdown = document.createElement('div');
+      switchDropdown.className = 'profile-switch-dropdown';
+
+      const renderSwitchAccounts = () => {
+        switchDropdown.innerHTML = '';
+
+        const otherAccounts: SavedAccount[] = getSavedAccounts()
+          .filter((account) => account.userId !== authState.user?.id);
+
+        if (otherAccounts.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'profile-switch-empty';
+          empty.textContent = 'No hay otras cuentas guardadas.';
+          switchDropdown.appendChild(empty);
+        } else {
+          otherAccounts.forEach((account) => {
+            const accountItem = document.createElement('button');
+            accountItem.type = 'button';
+            accountItem.className = 'profile-switch-account';
+
+            const avatar = document.createElement('div');
+            avatar.className = 'profile-switch-account-avatar';
+            if (account.avatarUrl) {
+              const img = document.createElement('img');
+              img.src = account.avatarUrl;
+              img.alt = account.displayName;
+              avatar.appendChild(img);
+            } else {
+              avatar.style.background = hashColor(account.displayName || account.email || 'user');
+              avatar.textContent = (account.displayName || account.email || 'U').charAt(0).toUpperCase();
+            }
+
+            const info = document.createElement('div');
+            info.className = 'profile-switch-account-info';
+            const name = document.createElement('span');
+            name.className = 'profile-switch-account-name';
+            name.textContent = account.displayName || account.email || 'Cuenta';
+            const email = document.createElement('span');
+            email.className = 'profile-switch-account-email';
+            email.textContent = account.email;
+            info.append(name, email);
+
+            accountItem.append(avatar, info);
+            accountItem.addEventListener('click', async (event) => {
+              event.stopPropagation();
+              accountItem.disabled = true;
+              closeAllDropdowns();
+              try {
+                const ok = await switchToSavedAccount(account.userId);
+                if (ok) {
+                  return;
+                }
+              } finally {
+                accountItem.disabled = false;
+              }
+            });
+            switchDropdown.appendChild(accountItem);
+          });
+        }
+
+        const addAccount = document.createElement('button');
+        addAccount.type = 'button';
+        addAccount.className = 'profile-switch-add-account';
+        addAccount.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg><span>Agregar cuenta</span>`;
+        addAccount.addEventListener('click', (event) => {
+          event.stopPropagation();
+          closeAllDropdowns();
+          authModal.showLogin();
+        });
+        switchDropdown.appendChild(addAccount);
+      };
+
+      renderSwitchAccounts();
+
+      switchItem.addEventListener('click', (event) => {
+        event.stopPropagation();
+        switchSection.classList.toggle('open');
+      });
+      switchSection.append(switchItem, switchDropdown);
+
+      const logoutItem = document.createElement('button');
+      logoutItem.type = 'button';
+      logoutItem.className = 'profile-dropdown-item';
+      logoutItem.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg><span>Cerrar sesion</span>`;
+      logoutItem.addEventListener('click', async (event) => {
+        event.stopPropagation();
+        if (logoutItem.disabled) return;
+        logoutItem.disabled = true;
+        profileDropdown.classList.remove('open');
+        const { error } = await signOut();
+        logoutItem.disabled = false;
+
+        if (error) {
+          console.error('[Navbar] signOut failed:', error);
+          return;
+        }
+
+        closeAllDropdowns();
+        navigate('/');
+      });
+
+      profileDropdownInner.append(header, hr, channelItem, switchSection, logoutItem);
     }
   }
 

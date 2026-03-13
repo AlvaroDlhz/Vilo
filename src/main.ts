@@ -6,13 +6,14 @@ import { Banner } from './components/Banner/Banner';
 import { VideoGrid } from './components/VideoGrid/VideoGrid';
 import { WatchPage } from './components/WatchPage/WatchPage';
 import { getAllVideos, getVideoById, initVideoStore } from './data/videoStore';
-import { getChannelById, initChannelStore } from './data/channelStore';
+import { getChannelByRouteId, initChannelStore } from './data/channelStore';
 import { initAuthStore } from './data/authStore';
 import { Feed, filterVideosByFeed, getPredefinedFeeds } from './data/feedStore';
 import { ChannelPage } from './components/ChannelPage/ChannelPage';
 import { UploadPage } from './components/UploadPage/UploadPage';
 import { getAuthState } from './data/authStore';
-import { addRoute, navigate, startRouter } from './router/router';
+import { addRoute, navigate, startRouter, refreshRoute } from './router/router';
+import { subscribe as subscribeAuthState } from './data/authStore';
 
 // Apply saved theme before first paint
 const savedTheme = localStorage.getItem('vilo-theme');
@@ -118,19 +119,32 @@ if (savedTheme === 'dark') {
     }
 
     function renderChannel(params: Record<string, string>) {
+      const channelId = params.id;
+      const tab = params.tab || 'videos';
       contentContainer.innerHTML = '';
 
-      const channel = getChannelById(params.id);
-      if (!channel) {
-        navigate('/');
-        return;
-      }
+      const loading = document.createElement('div');
+      loading.style.cssText = 'padding:48px 24px;text-align:center;color:var(--text-muted);';
+      loading.textContent = 'Cargando canal...';
+      contentContainer.appendChild(loading);
 
-      const tab = params.tab || 'videos';
-      const channelPage = ChannelPage({ channel, activeTab: tab });
-      contentContainer.appendChild(channelPage);
+      void getChannelByRouteId(channelId).then((channel) => {
+        const currentHash = window.location.hash.slice(1) || '/';
+        const expected = `/channel/${channelId}`;
+        if (!(currentHash === expected || currentHash.startsWith(`${expected}/`))) {
+          return;
+        }
 
-      window.scrollTo(0, 0);
+        if (!channel) {
+          navigate('/');
+          return;
+        }
+
+        contentContainer.innerHTML = '';
+        const channelPage = ChannelPage({ channel, activeTab: tab });
+        contentContainer.appendChild(channelPage);
+        window.scrollTo(0, 0);
+      });
     }
 
     function renderUpload() {
@@ -154,5 +168,26 @@ if (savedTheme === 'dark') {
     });
     addRoute('/channel/:id/:tab', renderChannel);
     startRouter();
+
+    let lastAuthUserId = getAuthState().user?.id || null;
+    let lastIsLoggedIn = getAuthState().isLoggedIn;
+
+    subscribeAuthState((authState) => {
+      const currentUserId = authState.user?.id || null;
+      const userChanged = currentUserId !== lastAuthUserId;
+      const loginStateChanged = authState.isLoggedIn !== lastIsLoggedIn;
+
+      lastAuthUserId = currentUserId;
+      lastIsLoggedIn = authState.isLoggedIn;
+
+      if (userChanged) {
+        refreshRoute();
+        return;
+      }
+
+      if (loginStateChanged) {
+        refreshRoute();
+      }
+    });
   }
 })();

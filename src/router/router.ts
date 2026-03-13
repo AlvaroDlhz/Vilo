@@ -58,3 +58,7 @@ export function startRouter(): void {
   // Initial route
   matchRoute(getPathFromHash());
 }
+
+export function refreshRoute(): void {
+  matchRoute(getPathFromHash());
+}

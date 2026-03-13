@@ -7,6 +7,7 @@ import { hashColor } from '../../utils/avatarColor';
 import { navigate } from '../../router/router';
 import { getAuthState, subscribe as subscribeAuth } from '../../data/authStore';
 import { toggleSubscription, isSubscribed, getSubscriberCount } from '../../lib/subscriptions';
+import { updateProfile, uploadAvatar, uploadBanner } from '../../lib/auth';
 import { supabase } from '../../lib/supabase';
 
 export interface ChannelPageOptions {
@@ -54,7 +55,8 @@ export function ChannelPage(options: ChannelPageOptions): HTMLDivElement {
   // Banner
   const banner = document.createElement('div');
   banner.className = 'channel-banner';
-  banner.style.background = bannerGradients[channel.bannerGradientIndex % bannerGradients.length];
+  const fallbackBanner = bannerGradients[channel.bannerGradientIndex % bannerGradients.length];
+  banner.style.background = fallbackBanner;
 
   // Header
   const header = document.createElement('div');
@@ -63,40 +65,140 @@ export function ChannelPage(options: ChannelPageOptions): HTMLDivElement {
   const headerLeft = document.createElement('div');
   headerLeft.className = 'channel-header-left';
 
+  const authSnapshot = getAuthState();
   const videos = getVideosByChannel(channel.id);
   const primaryVideo = videos[0];
-  const channelName = primaryVideo?.channelName || channel.name;
-  const channelUsername = primaryVideo?.channelUsername || toHandleBase(channelName);
+  const channelUserId = primaryVideo?.userId || (isLikelyUuid(channel.id) ? channel.id : null);
+  const isOwnChannel = !!(authSnapshot.isLoggedIn && channelUserId && authSnapshot.user?.id === channelUserId);
+  const ownerProfile = isOwnChannel && authSnapshot.profile?.id === channelUserId
+    ? authSnapshot.profile
+    : null;
+
+  let currentChannelName = ownerProfile?.display_name || primaryVideo?.channelName || channel.name;
+  const channelUsername = ownerProfile?.username || primaryVideo?.channelUsername || toHandleBase(currentChannelName);
   const channelHandle = `@${channelUsername}`;
+  let currentDescription = ownerProfile?.bio || channel.description || '';
+  let currentAvatarUrl = ownerProfile?.avatar_url || primaryVideo?.channelAvatar || null;
+  let currentBannerUrl = ownerProfile?.banner_url || null;
+
   const fallbackSubscribers = primaryVideo?.subscribers || channel.subscribers || '0 suscriptores';
   const channelVideoCount = videos.length;
-  const channelUserId = primaryVideo?.userId || (isLikelyUuid(channel.id) ? channel.id : null);
-  const isOwnChannel = !!(getAuthState().isLoggedIn && channelUserId && getAuthState().user?.id === channelUserId);
   let subscriberCountValue: number | null = null;
+  let isEditing = false;
+  let pendingAvatarFile: File | null = null;
+  let pendingBannerFile: File | null = null;
+  let pendingAvatarPreviewUrl: string | null = null;
+  let pendingBannerPreviewUrl: string | null = null;
 
   const avatar = document.createElement('div');
   avatar.className = 'channel-avatar';
   const applyAvatarFallback = () => {
     avatar.innerHTML = '';
-    avatar.textContent = channelName.charAt(0).toUpperCase();
-    avatar.style.background = hashColor(channelName);
+    avatar.textContent = currentChannelName.charAt(0).toUpperCase();
+    avatar.style.background = hashColor(currentChannelName);
   };
-  if (primaryVideo?.channelAvatar) {
+
+  const applyAvatarVisual = (avatarUrl: string | null) => {
+    if (!avatarUrl) {
+      applyAvatarFallback();
+      return;
+    }
+
+    avatar.innerHTML = '';
     const img = document.createElement('img');
-    img.src = primaryVideo.channelAvatar;
-    img.alt = channelName;
+    img.src = avatarUrl;
+    img.alt = currentChannelName;
     img.addEventListener('error', applyAvatarFallback);
     avatar.appendChild(img);
-  } else {
-    applyAvatarFallback();
-  }
+  };
+
+  const applyBannerVisual = (bannerUrl: string | null) => {
+    if (bannerUrl) {
+      banner.style.background = '';
+      banner.style.backgroundImage = `url("${bannerUrl}")`;
+      banner.style.backgroundSize = 'cover';
+      banner.style.backgroundPosition = 'center';
+      banner.style.backgroundRepeat = 'no-repeat';
+      return;
+    }
+
+    banner.style.backgroundImage = '';
+    banner.style.backgroundSize = '';
+    banner.style.backgroundPosition = '';
+    banner.style.backgroundRepeat = '';
+    banner.style.background = fallbackBanner;
+  };
+
+  const clearObjectUrl = (url: string | null) => {
+    if (!url) return;
+    URL.revokeObjectURL(url);
+  };
+
+  const avatarShell = document.createElement('div');
+  avatarShell.className = 'channel-avatar-shell';
+
+  const avatarInput = document.createElement('input');
+  avatarInput.type = 'file';
+  avatarInput.accept = 'image/*';
+  avatarInput.className = 'channel-inline-file-input';
+
+  const avatarEditBtn = document.createElement('button');
+  avatarEditBtn.type = 'button';
+  avatarEditBtn.className = 'channel-media-edit channel-avatar-edit';
+  avatarEditBtn.textContent = 'Cambiar foto';
+
+  avatarEditBtn.addEventListener('click', () => {
+    if (!isEditing) return;
+    avatarInput.click();
+  });
+
+  avatarInput.addEventListener('change', () => {
+    const file = avatarInput.files?.[0];
+    if (!file) return;
+
+    pendingAvatarFile = file;
+    clearObjectUrl(pendingAvatarPreviewUrl);
+    pendingAvatarPreviewUrl = URL.createObjectURL(file);
+    applyAvatarVisual(pendingAvatarPreviewUrl);
+  });
+
+  const bannerInput = document.createElement('input');
+  bannerInput.type = 'file';
+  bannerInput.accept = 'image/*';
+  bannerInput.className = 'channel-inline-file-input';
+
+  const bannerEditBtn = document.createElement('button');
+  bannerEditBtn.type = 'button';
+  bannerEditBtn.className = 'channel-media-edit channel-banner-edit';
+  bannerEditBtn.textContent = 'Cambiar banner';
+
+  bannerEditBtn.addEventListener('click', () => {
+    if (!isEditing) return;
+    bannerInput.click();
+  });
+
+  bannerInput.addEventListener('change', () => {
+    const file = bannerInput.files?.[0];
+    if (!file) return;
+
+    pendingBannerFile = file;
+    clearObjectUrl(pendingBannerPreviewUrl);
+    pendingBannerPreviewUrl = URL.createObjectURL(file);
+    applyBannerVisual(pendingBannerPreviewUrl);
+  });
+
+  applyAvatarVisual(currentAvatarUrl);
+  applyBannerVisual(currentBannerUrl);
+
+  avatarShell.append(avatar, avatarEditBtn, avatarInput);
+  banner.append(bannerEditBtn, bannerInput);
 
   const headerText = document.createElement('div');
   headerText.className = 'channel-header-text';
 
   const name = document.createElement('h1');
   name.className = 'channel-name';
-  name.textContent = channelName;
+  name.textContent = currentChannelName;
 
   const handle = document.createElement('span');
   handle.className = 'channel-handle';
@@ -106,7 +208,50 @@ export function ChannelPage(options: ChannelPageOptions): HTMLDivElement {
   counters.className = 'channel-counters';
   counters.textContent = `${fallbackSubscribers} · ${channelVideoCount} videos`;
 
-  headerText.append(name, handle, counters);
+  const description = document.createElement('p');
+  description.className = 'channel-description';
+  description.textContent = currentDescription;
+
+  const inlineEditor = document.createElement('div');
+  inlineEditor.className = 'channel-inline-editor';
+
+  const nameInput = document.createElement('input');
+  nameInput.className = 'channel-inline-name-input';
+  nameInput.type = 'text';
+  nameInput.maxLength = 70;
+  nameInput.value = currentChannelName;
+
+  const handleStatic = document.createElement('div');
+  handleStatic.className = 'channel-inline-handle';
+  handleStatic.textContent = `${channelHandle} (no editable)`;
+
+  const descriptionInput = document.createElement('textarea');
+  descriptionInput.className = 'channel-inline-description-input';
+  descriptionInput.rows = 4;
+  descriptionInput.maxLength = 5000;
+  descriptionInput.value = currentDescription;
+  descriptionInput.placeholder = 'Agrega una descripcion para tu canal';
+
+  const editorStatus = document.createElement('div');
+  editorStatus.className = 'channel-inline-status';
+
+  const editorActions = document.createElement('div');
+  editorActions.className = 'channel-inline-actions';
+
+  const cancelEditBtn = document.createElement('button');
+  cancelEditBtn.type = 'button';
+  cancelEditBtn.className = 'channel-inline-btn channel-inline-btn-ghost';
+  cancelEditBtn.textContent = 'Cancelar';
+
+  const saveEditBtn = document.createElement('button');
+  saveEditBtn.type = 'button';
+  saveEditBtn.className = 'channel-inline-btn channel-inline-btn-primary';
+  saveEditBtn.textContent = 'Guardar cambios';
+
+  editorActions.append(cancelEditBtn, saveEditBtn);
+  inlineEditor.append(nameInput, handleStatic, descriptionInput, editorStatus, editorActions);
+
+  headerText.append(name, handle, counters, description, inlineEditor);
 
   const subscribeBtn = document.createElement('button');
   subscribeBtn.className = 'channel-subscribe-btn';
@@ -119,11 +264,139 @@ export function ChannelPage(options: ChannelPageOptions): HTMLDivElement {
   const editChannelBtn = document.createElement('button');
   editChannelBtn.className = 'channel-edit-btn';
   editChannelBtn.textContent = 'Editar canal';
+  let saveBusy = false;
+
+  const setEditStatus = (message: string, isError = false) => {
+    editorStatus.textContent = message;
+    editorStatus.classList.toggle('error', isError);
+    editorStatus.classList.toggle('visible', !!message);
+  };
+
+  const applyCurrentChannelUi = () => {
+    name.textContent = currentChannelName;
+    description.textContent = currentDescription;
+    nameInput.value = currentChannelName;
+    descriptionInput.value = currentDescription;
+    channel.name = currentChannelName;
+    channel.description = currentDescription;
+    applyAvatarVisual(currentAvatarUrl);
+    applyBannerVisual(currentBannerUrl);
+  };
+
+  const setEditingMode = (editing: boolean) => {
+    isEditing = editing;
+    page.classList.toggle('channel-is-editing', editing);
+    inlineEditor.classList.toggle('visible', editing);
+    name.style.display = editing ? 'none' : '';
+    description.style.display = editing ? 'none' : '';
+    counters.style.display = editing ? 'none' : '';
+    editChannelBtn.style.display = isOwnChannel && !editing ? '' : 'none';
+    avatarEditBtn.style.display = isOwnChannel && editing ? 'inline-flex' : 'none';
+    bannerEditBtn.style.display = isOwnChannel && editing ? 'inline-flex' : 'none';
+    if (!editing) {
+      setEditStatus('');
+    }
+  };
+
   editChannelBtn.addEventListener('click', () => {
-    navigate(`/channel/${channel.id}/about`);
+    if (!isOwnChannel) return;
+    pendingAvatarFile = null;
+    pendingBannerFile = null;
+    avatarInput.value = '';
+    bannerInput.value = '';
+    clearObjectUrl(pendingAvatarPreviewUrl);
+    clearObjectUrl(pendingBannerPreviewUrl);
+    pendingAvatarPreviewUrl = null;
+    pendingBannerPreviewUrl = null;
+    applyCurrentChannelUi();
+    setEditingMode(true);
   });
 
-  headerLeft.append(avatar, headerText);
+  cancelEditBtn.addEventListener('click', () => {
+    pendingAvatarFile = null;
+    pendingBannerFile = null;
+    avatarInput.value = '';
+    bannerInput.value = '';
+    clearObjectUrl(pendingAvatarPreviewUrl);
+    clearObjectUrl(pendingBannerPreviewUrl);
+    pendingAvatarPreviewUrl = null;
+    pendingBannerPreviewUrl = null;
+    applyCurrentChannelUi();
+    setEditingMode(false);
+  });
+
+  saveEditBtn.addEventListener('click', async () => {
+    if (!isOwnChannel || !channelUserId || saveBusy) return;
+
+    const nextName = nameInput.value.trim();
+    if (!nextName) {
+      setEditStatus('El nombre del canal es obligatorio.', true);
+      return;
+    }
+
+    const nextDescription = descriptionInput.value.trim();
+    saveBusy = true;
+    saveEditBtn.disabled = true;
+    saveEditBtn.textContent = 'Guardando...';
+    cancelEditBtn.disabled = true;
+    setEditStatus('');
+
+    try {
+      const updates: Record<string, string> = {};
+      if (nextName !== currentChannelName) updates.display_name = nextName;
+      if (nextDescription !== currentDescription) updates.bio = nextDescription;
+
+      if (Object.keys(updates).length > 0) {
+        const { error } = await updateProfile(channelUserId, updates as any);
+        if (error) {
+          throw new Error(error.message || 'No se pudo actualizar el perfil');
+        }
+      }
+
+      if (pendingAvatarFile) {
+        const { error, url } = await uploadAvatar(channelUserId, pendingAvatarFile);
+        if (error) {
+          throw new Error(error.message || 'No se pudo subir la foto de perfil');
+        }
+        if (url) currentAvatarUrl = url;
+      }
+
+      if (pendingBannerFile) {
+        const { error, url } = await uploadBanner(channelUserId, pendingBannerFile);
+        if (error) {
+          throw new Error(error.message || 'No se pudo subir el banner');
+        }
+        if (url) currentBannerUrl = url;
+      }
+
+      currentChannelName = nextName;
+      currentDescription = nextDescription;
+      pendingAvatarFile = null;
+      pendingBannerFile = null;
+      avatarInput.value = '';
+      bannerInput.value = '';
+      clearObjectUrl(pendingAvatarPreviewUrl);
+      clearObjectUrl(pendingBannerPreviewUrl);
+      pendingAvatarPreviewUrl = null;
+      pendingBannerPreviewUrl = null;
+      applyCurrentChannelUi();
+      setEditingMode(false);
+    } catch (err) {
+      setEditStatus(
+        err instanceof Error ? err.message : 'No se pudieron guardar los cambios.',
+        true,
+      );
+    } finally {
+      saveBusy = false;
+      saveEditBtn.disabled = false;
+      saveEditBtn.textContent = 'Guardar cambios';
+      cancelEditBtn.disabled = false;
+    }
+  });
+
+  setEditingMode(false);
+
+  headerLeft.append(avatarShell, headerText);
   header.appendChild(headerLeft);
 
   // Tabs row (tabs left, actions right)
@@ -149,11 +422,13 @@ export function ChannelPage(options: ChannelPageOptions): HTMLDivElement {
 
   const refreshSubscriptionUi = async () => {
     const auth = getAuthState();
-    const isOwnChannel = !!(auth.isLoggedIn && channelUserId && auth.user?.id === channelUserId);
+    const isOwnChannelNow = !!(auth.isLoggedIn && channelUserId && auth.user?.id === channelUserId);
 
-    editChannelBtn.style.display = isOwnChannel ? '' : 'none';
-    subscribeBtn.style.display = isOwnChannel ? 'none' : '';
-    sponsorBtn.style.display = isOwnChannel ? 'none' : '';
+    editChannelBtn.style.display = isOwnChannelNow && !isEditing ? '' : 'none';
+    subscribeBtn.style.display = isOwnChannelNow ? 'none' : '';
+    sponsorBtn.style.display = isOwnChannelNow ? 'none' : '';
+    avatarEditBtn.style.display = isOwnChannelNow && isEditing ? 'inline-flex' : 'none';
+    bannerEditBtn.style.display = isOwnChannelNow && isEditing ? 'inline-flex' : 'none';
 
     if (!channelUserId) {
       subscribeBtn.disabled = true;

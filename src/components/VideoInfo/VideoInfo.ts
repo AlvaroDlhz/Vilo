@@ -3,7 +3,7 @@ import { hashColor } from '../../utils/avatarColor';
 import { getChannelIdByName } from '../../data/channelStore';
 import { navigate } from '../../router/router';
 import { voteVideo, getUserVideoVote, getVideoStats } from '../../lib/videoInteractions';
-import { getAuthState } from '../../data/authStore';
+import { getAuthState, subscribe as subscribeAuth } from '../../data/authStore';
 import { supabase } from '../../lib/supabase';
 import { toggleSubscription, isSubscribed, getSubscriberCount } from '../../lib/subscriptions';
 
@@ -85,6 +85,7 @@ export function VideoInfo(options: VideoInfoOptions): HTMLDivElement {
   const subscribeBtn = document.createElement('button');
   subscribeBtn.className = 'video-info-subscribe';
   subscribeBtn.textContent = 'Suscribirse';
+  let unsubscribeAuth: (() => void) | null = null;
 
   function formatSubscriberCount(n: number): string {
     if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M suscriptores`;
@@ -94,48 +95,78 @@ export function VideoInfo(options: VideoInfoOptions): HTMLDivElement {
   }
 
   if (channelUserId) {
-    // Load subscriber count
-    getSubscriberCount(channelUserId).then(count => {
-      subscribersEl.textContent = formatSubscriberCount(count);
-    });
+    let subscriberCountValue: number | null = null;
+    let refreshSubscriptionId = 0;
+    let subscribeBusy = false;
 
-    const auth = getAuthState();
-    const isOwnChannel = auth.isLoggedIn && auth.user?.id === channelUserId;
+    const setSubscribeVisualState = (subscribed: boolean) => {
+      subscribeBtn.textContent = subscribed ? 'Desuscribirse' : 'Suscribirse';
+      subscribeBtn.classList.toggle('subscribed', subscribed);
+    };
 
-    if (isOwnChannel) {
-      subscribeBtn.style.display = 'none';
-    } else {
-      if (auth.isLoggedIn) {
-        isSubscribed(channelUserId).then(subscribed => {
-          if (subscribed) {
-            subscribeBtn.textContent = 'Desuscribirse';
-            subscribeBtn.classList.add('subscribed');
-          }
-        });
+    const updateSubscriberLabel = () => {
+      subscribersEl.textContent = subscriberCountValue === null
+        ? subscribers
+        : formatSubscriberCount(subscriberCountValue);
+    };
+
+    const refreshSubscriptionState = async () => {
+      const refreshId = ++refreshSubscriptionId;
+      const auth = getAuthState();
+      const isOwnChannel = auth.isLoggedIn && auth.user?.id === channelUserId;
+
+      subscribeBtn.style.display = isOwnChannel ? 'none' : '';
+      if (isOwnChannel) return;
+
+      if (!subscribeBusy) subscribeBtn.disabled = true;
+
+      const [count, subscribed] = await Promise.all([
+        getSubscriberCount(channelUserId),
+        auth.isLoggedIn ? isSubscribed(channelUserId) : Promise.resolve(false),
+      ]);
+
+      if (refreshId !== refreshSubscriptionId) return;
+
+      subscriberCountValue = count;
+      updateSubscriberLabel();
+      setSubscribeVisualState(subscribed);
+      if (!subscribeBusy) subscribeBtn.disabled = false;
+    };
+
+    subscribeBtn.addEventListener('click', async () => {
+      if (!getAuthState().isLoggedIn || subscribeBusy) return;
+
+      subscribeBusy = true;
+      subscribeBtn.disabled = true;
+
+      const wasSubscribed = subscribeBtn.classList.contains('subscribed');
+      setSubscribeVisualState(!wasSubscribed);
+
+      if (subscriberCountValue !== null) {
+        subscriberCountValue = Math.max(0, subscriberCountValue + (wasSubscribed ? -1 : 1));
+        updateSubscriberLabel();
       }
 
-      let subCount = 0;
-      getSubscriberCount(channelUserId).then(c => {
-        subCount = c;
-        subscribersEl.textContent = formatSubscriberCount(subCount);
-      });
-
-      subscribeBtn.addEventListener('click', () => {
-        if (!getAuthState().isLoggedIn) return;
-        const nowSubscribed = subscribeBtn.classList.contains('subscribed');
-        if (nowSubscribed) {
-          subscribeBtn.textContent = 'Suscribirse';
-          subscribeBtn.classList.remove('subscribed');
-          subCount--;
-        } else {
-          subscribeBtn.textContent = 'Desuscribirse';
-          subscribeBtn.classList.add('subscribed');
-          subCount++;
+      const ok = await toggleSubscription(channelUserId);
+      if (!ok) {
+        setSubscribeVisualState(wasSubscribed);
+        if (subscriberCountValue !== null) {
+          subscriberCountValue = Math.max(0, subscriberCountValue + (wasSubscribed ? 1 : -1));
+          updateSubscriberLabel();
         }
-        subscribersEl.textContent = formatSubscriberCount(subCount);
-        toggleSubscription(channelUserId);
-      });
-    }
+      }
+
+      await refreshSubscriptionState();
+      subscribeBusy = false;
+      subscribeBtn.disabled = false;
+    });
+
+    void refreshSubscriptionState();
+    unsubscribeAuth = subscribeAuth(() => {
+      void refreshSubscriptionState();
+    });
+  } else {
+    subscribeBtn.style.display = 'none';
   }
 
   const sponsorBtn = document.createElement('button');
@@ -312,6 +343,21 @@ export function VideoInfo(options: VideoInfoOptions): HTMLDivElement {
   descriptionBox.append(descMeta, descText, descToggle);
 
   container.append(titleEl, channelRow, descriptionBox);
+
+  if (unsubscribeAuth) {
+    let mounted = false;
+    const observer = new MutationObserver(() => {
+      if (!mounted) {
+        if (document.contains(container)) mounted = true;
+        return;
+      }
+      if (!document.contains(container)) {
+        unsubscribeAuth?.();
+        observer.disconnect();
+      }
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+  }
 
   return container;
 }

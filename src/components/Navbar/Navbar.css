@@ -298,6 +298,19 @@
   transition: background 0.12s ease;
 }
 
+button.profile-dropdown-item {
+  width: 100%;
+  border: none;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+}
+
+button.profile-dropdown-item:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 .profile-dropdown-item:hover {
   background: var(--bg-hover);
 }
@@ -306,6 +319,112 @@
   width: 18px;
   height: 18px;
   flex-shrink: 0;
+}
+
+.profile-dropdown-item--submenu {
+  justify-content: space-between;
+}
+
+.profile-dropdown-item-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.profile-dropdown-submenu-arrow {
+  transition: transform 0.18s ease;
+}
+
+.profile-switch-section.open .profile-dropdown-submenu-arrow {
+  transform: rotate(90deg);
+}
+
+.profile-switch-dropdown {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.2s ease;
+  border-top: 1px solid transparent;
+}
+
+.profile-switch-section.open .profile-switch-dropdown {
+  max-height: 280px;
+  border-top-color: var(--border);
+}
+
+.profile-switch-empty {
+  padding: 10px 14px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.profile-switch-account,
+.profile-switch-add-account {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  font-size: 0.8rem;
+}
+
+.profile-switch-account:hover,
+.profile-switch-add-account:hover {
+  background: var(--bg-hover);
+}
+
+.profile-switch-account:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.profile-switch-account-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.profile-switch-account-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.profile-switch-account-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.profile-switch-account-name {
+  font-size: 0.8rem;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.profile-switch-account-email {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
+}
+
+.profile-switch-add-account {
+  border-top: 1px solid var(--border);
 }
 
 /* Navbar Dropdowns (Notifications & Chat) */

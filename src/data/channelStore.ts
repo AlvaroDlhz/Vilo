@@ -31,6 +31,15 @@ export interface ChannelData {
   posts: ChannelPost[];
 }
 
+interface ProfileChannelRow {
+  id: string;
+  display_name: string | null;
+  username: string | null;
+  bio: string | null;
+  created_at: string | null;
+  subscriber_count: number | null;
+}
+
 function slugify(name: string): string {
   return name
     .toLowerCase()
@@ -231,6 +240,52 @@ function buildChannelData(): Map<string, ChannelData> {
 
 const channelMap = buildChannelData();
 
+function isLikelyUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function hashToGradientIndex(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i += 1) {
+    hash = ((hash << 5) - hash) + value.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash) % 8;
+}
+
+function formatSubscribersCount(value: number | null | undefined): string {
+  const count = Number.isFinite(value as number) ? Number(value) : 0;
+  if (count >= 1_000_000) return `${(count / 1_000_000).toFixed(1).replace(/\.0$/, '')}M suscriptores`;
+  if (count >= 1_000) return `${(count / 1_000).toFixed(1).replace(/\.0$/, '')}K suscriptores`;
+  if (count === 1) return '1 suscriptor';
+  return `${count} suscriptores`;
+}
+
+function formatJoinedDate(value: string | null): string {
+  if (!value) return 'reciente';
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return 'reciente';
+  const months = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+  return `${months[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+function createChannelFromProfile(profile: ProfileChannelRow): ChannelData {
+  const channelName = profile.display_name || profile.username || 'Usuario';
+  return {
+    id: profile.id,
+    name: channelName,
+    subscribers: formatSubscribersCount(profile.subscriber_count),
+    description: profile.bio || `Bienvenido al canal de ${channelName}.`,
+    joinedDate: formatJoinedDate(profile.created_at),
+    totalViews: '0',
+    location: 'N/A',
+    links: [],
+    bannerGradientIndex: hashToGradientIndex(profile.id),
+    playlists: [],
+    posts: [],
+  };
+}
+
 function createFallbackChannelData(id: string, videos: VideoData[]): ChannelData | undefined {
   if (videos.length === 0) return undefined;
 
@@ -269,11 +324,41 @@ export function getChannelById(id: string): ChannelData | undefined {
   return undefined;
 }
 
+export async function getChannelByRouteId(routeId: string): Promise<ChannelData | undefined> {
+  const existing = getChannelById(routeId);
+  if (existing) return existing;
+
+  try {
+    let profileQuery = supabase
+      .from('profiles')
+      .select('id, display_name, username, bio, created_at, subscriber_count');
+
+    if (isLikelyUuid(routeId)) {
+      profileQuery = profileQuery.eq('id', routeId);
+    } else {
+      profileQuery = profileQuery.eq('username', routeId);
+    }
+
+    const { data: profile, error } = await profileQuery.maybeSingle<ProfileChannelRow>();
+    if (error || !profile) return undefined;
+
+    const channel = createChannelFromProfile(profile);
+    channelMap.set(channel.id, channel);
+    return channel;
+  } catch (err) {
+    console.warn('[channelStore] Failed to resolve channel route id:', err);
+    return undefined;
+  }
+}
+
 export function getAllChannels(): ChannelData[] {
   return Array.from(channelMap.values());
 }
 
 export function getVideosByChannel(channelId: string): VideoData[] {
+  const byUserId = getAllVideos().filter((v) => v.userId === channelId);
+  if (byUserId.length > 0) return byUserId;
+
   const channel = channelMap.get(channelId);
   if (channel) {
     return getAllVideos().filter(v => v.channelName === channel.name);

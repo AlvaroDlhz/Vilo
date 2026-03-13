@@ -330,7 +330,7 @@ export class Sidebar {
       item.append(avatar, name);
       item.addEventListener('click', (e) => {
         e.stopPropagation();
-        navigate(`/channel/${ch.username || ch.userId}`);
+        navigate(`/channel/${ch.userId}`);
         this.close();
       });
 

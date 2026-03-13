@@ -19,6 +19,16 @@ export interface Comment {
   } | null;
 }
 
+interface CommentsQueryResult {
+  comments: Comment[];
+  error: string | null;
+}
+
+interface VotesQueryResult {
+  votes: Map<string, number>;
+  error: string | null;
+}
+
 async function attachProfiles(rows: any[]): Promise<Comment[]> {
   if (rows.length === 0) return [];
 
@@ -98,7 +108,7 @@ async function notifyForComment(params: {
   }
 }
 
-export async function fetchComments(videoId: string): Promise<Comment[]> {
+export async function fetchComments(videoId: string): Promise<CommentsQueryResult> {
   const { data, error } = await supabase
     .from('comments')
     .select('*')
@@ -108,7 +118,7 @@ export async function fetchComments(videoId: string): Promise<Comment[]> {
 
   if (error) {
     console.error('[comments] fetchComments error:', error);
-    return [];
+    return { comments: [], error: error.message || 'No se pudieron cargar los comentarios.' };
   }
 
   // Count replies per top-level comment
@@ -130,7 +140,7 @@ export async function fetchComments(videoId: string): Promise<Comment[]> {
   for (const c of comments) {
     c.reply_count = replyCounts.get(c.id) || 0;
   }
-  return comments;
+  return { comments, error: null };
 }
 
 export async function fetchReplies(commentId: string): Promise<Comment[]> {
@@ -229,14 +239,19 @@ export async function deleteComment(commentId: string): Promise<boolean> {
   return !error;
 }
 
-export async function getUserVotes(): Promise<Map<string, number>> {
+export async function getUserVotes(): Promise<VotesQueryResult> {
   const { user } = getAuthState();
-  if (!user) return new Map();
+  if (!user) return { votes: new Map(), error: null };
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('comment_votes')
     .select('comment_id, vote')
     .eq('user_id', user.id);
+
+  if (error) {
+    console.error('[comments] getUserVotes error:', error);
+    return { votes: new Map(), error: error.message || 'No se pudo cargar el estado de votos.' };
+  }
 
   const map = new Map<string, number>();
   if (data) {
@@ -244,13 +259,21 @@ export async function getUserVotes(): Promise<Map<string, number>> {
       map.set(row.comment_id, row.vote);
     }
   }
-  return map;
+  return { votes: map, error: null };
 }
 
-export async function fetchCommentsWithVotes(videoId: string): Promise<{ comments: Comment[]; userVotes: Map<string, number> }> {
-  const [comments, userVotes] = await Promise.all([
+export async function fetchCommentsWithVotes(
+  videoId: string,
+): Promise<{ comments: Comment[]; userVotes: Map<string, number>; error: string | null }> {
+  const [commentsResult, votesResult] = await Promise.all([
     fetchComments(videoId),
     getUserVotes(),
   ]);
-  return { comments, userVotes };
+
+  const error = commentsResult.error || votesResult.error;
+  return {
+    comments: commentsResult.comments,
+    userVotes: votesResult.votes,
+    error,
+  };
 }

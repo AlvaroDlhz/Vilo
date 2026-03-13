@@ -122,6 +122,8 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
   let comments: Comment[] = [];
   let userVotes = new Map<string, number>();
   let currentSort: 'recent' | 'popular' | 'oldest' = 'recent';
+  let commentsLoading = false;
+  let commentsError: string | null = null;
 
   type SortFn = (a: Comment, b: Comment) => number;
   const sortFns: Record<string, SortFn> = {
@@ -154,6 +156,14 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
   }
 
   function updateCommentsTitle() {
+    if (commentsLoading) {
+      commentsTitle.textContent = 'Cargando comentarios...';
+      return;
+    }
+    if (commentsError) {
+      commentsTitle.textContent = 'Comentarios';
+      return;
+    }
     commentsTitle.textContent = `${comments.length} comentario${comments.length !== 1 ? 's' : ''}`;
   }
 
@@ -369,6 +379,23 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
 
   function renderComments() {
     commentList.innerHTML = '';
+
+    if (commentsLoading) {
+      const loading = document.createElement('p');
+      loading.className = 'comments-empty';
+      loading.textContent = 'Cargando comentarios...';
+      commentList.appendChild(loading);
+      return;
+    }
+
+    if (commentsError) {
+      const error = document.createElement('p');
+      error.className = 'comments-empty';
+      error.textContent = 'No se pudieron cargar los comentarios. Intenta recargar.';
+      commentList.appendChild(error);
+      return;
+    }
+
     const list = getFilteredComments();
 
     list.forEach(c => {
@@ -427,12 +454,42 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
   }
 
   let refreshId = 0;
+  function wait(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  async function fetchCommentsWithRetry(attempts = 2) {
+    let result = await fetchCommentsWithVotes(video.id);
+    for (let attempt = 1; attempt < attempts && result.error; attempt += 1) {
+      await wait(250);
+      result = await fetchCommentsWithVotes(video.id);
+    }
+    return result;
+  }
+
   async function refreshComments() {
     const id = ++refreshId;
-    const result = await fetchCommentsWithVotes(video.id);
+    commentsLoading = true;
+    commentsError = null;
+    updateCommentsTitle();
+    renderComments();
+
+    const result = await fetchCommentsWithRetry(2);
     if (id !== refreshId) return; // stale, a newer refresh is in progress
+    commentsLoading = false;
+
+    if (result.error) {
+      comments = [];
+      userVotes = new Map();
+      commentsError = result.error;
+      updateCommentsTitle();
+      renderComments();
+      return;
+    }
+
     comments = result.comments;
     userVotes = result.userVotes;
+    commentsError = null;
     updateCommentsTitle();
     renderComments();
   }
