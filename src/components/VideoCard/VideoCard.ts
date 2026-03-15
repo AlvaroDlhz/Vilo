@@ -18,6 +18,7 @@ export interface VideoCardOptions {
   variant?: 'default' | 'compact' | 'owner';
   showChannelName?: boolean;
   onClick?: () => void;
+  onSaveClick?: () => void;
 }
 
 const gradientClasses = [
@@ -56,7 +57,7 @@ async function applyGeneratedThumbnail(
 export function VideoCard(options: VideoCardOptions): HTMLDivElement {
   const {
     thumbnail, videoUrl, title, channelName, channelAvatar, views,
-    uploadedAt, duration, progress, gradientIndex = 0, variant = 'default', showChannelName = true, onClick,
+    uploadedAt, duration, progress, gradientIndex = 0, variant = 'default', showChannelName = true, onClick, onSaveClick,
   } = options;
 
   const isCompact = variant === 'compact';
@@ -88,11 +89,11 @@ export function VideoCard(options: VideoCardOptions): HTMLDivElement {
   const actions = document.createElement('div');
   actions.className = 'thumbnail-actions';
 
-  const watchLater = createActionBtn('Ver mas tarde', `
+  const watchLater = createActionBtn('Guardar', `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
     </svg>
-  `);
+  `, onSaveClick);
 
   const menuBtn = createActionBtn('Mas opciones', `
     <svg viewBox="0 0 24 24" fill="currentColor">
@@ -179,11 +180,14 @@ export function VideoCard(options: VideoCardOptions): HTMLDivElement {
   return card;
 }
 
-function createActionBtn(title: string, svgHTML: string): HTMLButtonElement {
+function createActionBtn(title: string, svgHTML: string, onClick?: () => void): HTMLButtonElement {
   const btn = document.createElement('button');
   btn.className = 'thumbnail-action-btn';
   btn.title = title;
   btn.innerHTML = svgHTML;
-  btn.addEventListener('click', (e) => e.stopPropagation());
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    onClick?.();
+  });
   return btn;
 }

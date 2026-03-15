@@ -211,6 +211,23 @@
   animation: blink-closed 4s infinite;
 }
 
+.eye-iris-shape {
+  fill: var(--bg-nav, var(--bg));
+  opacity: 0;
+}
+
+.eye-container[data-iris="normal"] .iris-normal {
+  opacity: 1;
+}
+
+.eye-container[data-iris="play"] .iris-play {
+  opacity: 1;
+}
+
+.eye-container[data-iris="pause"] .iris-pause {
+  opacity: 1;
+}
+
 @keyframes blink-open {
   0%, 96%, 100% { opacity: 1; }
   97%, 99% { opacity: 0; }

@@ -5,12 +5,15 @@ import { Sidebar } from './components/Sidebar/Sidebar';
 import { Banner } from './components/Banner/Banner';
 import { VideoGrid } from './components/VideoGrid/VideoGrid';
 import { WatchPage } from './components/WatchPage/WatchPage';
-import { getAllVideos, getVideoById, initVideoStore } from './data/videoStore';
+import { getAllVideos, getVideoById, initVideoStore, type VideoData } from './data/videoStore';
 import { getChannelByRouteId, initChannelStore } from './data/channelStore';
+import { getWatchedVideoIds, recordWatchedVideo } from './data/historyStore';
+import { getSavedLists, toggleVideoInList } from './data/savedStore';
 import { initAuthStore } from './data/authStore';
 import { Feed, filterVideosByFeed, getPredefinedFeeds } from './data/feedStore';
 import { ChannelPage } from './components/ChannelPage/ChannelPage';
 import { UploadPage } from './components/UploadPage/UploadPage';
+import { SavedPage } from './components/SavedPage/SavedPage';
 import { getAuthState } from './data/authStore';
 import { addRoute, navigate, startRouter, refreshRoute } from './router/router';
 import { subscribe as subscribeAuthState } from './data/authStore';
@@ -56,6 +59,10 @@ if (savedTheme === 'dark') {
     contentContainer.id = 'route-content';
     app.appendChild(contentContainer);
 
+    function handleToggleSaved(videoId: string) {
+      toggleVideoInList(videoId);
+    }
+
     function renderHome() {
       contentContainer.innerHTML = '';
 
@@ -75,6 +82,7 @@ if (savedTheme === 'dark') {
           duration: v.duration,
           gradientIndex: v.gradientIndex,
           onClick: () => navigate(`/watch/${v.id}`),
+          onSaveClick: () => handleToggleSaved(v.id),
         })),
         columns: {
           default: 4,
@@ -103,6 +111,83 @@ if (savedTheme === 'dark') {
       contentContainer.appendChild(mainContent);
     }
 
+    function renderHistory() {
+      contentContainer.innerHTML = '';
+
+      const banner = Banner();
+      const mainContent = document.createElement('div');
+      mainContent.className = 'main-content';
+      mainContent.appendChild(banner);
+      const historyContent = document.createElement('div');
+      historyContent.style.cssText = 'text-align:center;padding:80px 24px;color:var(--text-muted);';
+      historyContent.textContent = 'Cargando historial...';
+      mainContent.appendChild(historyContent);
+
+      contentContainer.appendChild(mainContent);
+
+      const currentRoute = window.location.hash.slice(1) || '/';
+      void getWatchedVideoIds(200).then((historyVideoIds) => {
+        const routeNow = window.location.hash.slice(1) || '/';
+        if (routeNow !== currentRoute || !routeNow.startsWith('/history')) return;
+
+        const historyVideos = historyVideoIds
+          .map((id) => getVideoById(id))
+          .filter((video): video is NonNullable<ReturnType<typeof getVideoById>> => !!video);
+
+        historyContent.innerHTML = '';
+
+        if (historyVideos.length === 0) {
+          historyContent.innerHTML = `
+            <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:16px;opacity:0.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <h3 style="font-size:18px;margin-bottom:8px;color:var(--text)">Tu historial esta vacio</h3>
+            <p style="font-size:14px">Empieza a ver videos y apareceran aqui</p>
+          `;
+          return;
+        }
+
+        const videoGrid = VideoGrid({
+          videos: historyVideos.map(v => ({
+            thumbnail: v.thumbnailUrl || undefined,
+            videoUrl: v.videoUrl,
+            title: v.title,
+            channelName: v.channelName,
+            channelAvatar: v.channelAvatar || undefined,
+            views: v.views,
+            uploadedAt: v.uploadedAt,
+            duration: v.duration,
+            gradientIndex: v.gradientIndex,
+            onClick: () => navigate(`/watch/${v.id}`),
+            onSaveClick: () => handleToggleSaved(v.id),
+          })),
+          columns: {
+            default: 4,
+            tablet: 3,
+            mobile: 1,
+          },
+        });
+
+        historyContent.style.cssText = '';
+        historyContent.appendChild(videoGrid);
+      }).catch(() => {
+        const routeNow = window.location.hash.slice(1) || '/';
+        if (routeNow !== currentRoute || !routeNow.startsWith('/history')) return;
+        historyContent.textContent = 'No se pudo cargar el historial.';
+      });
+    }
+
+    function renderSaved() {
+      contentContainer.innerHTML = '';
+
+      const banner = Banner();
+      const mainContent = document.createElement('div');
+      mainContent.className = 'main-content';
+      mainContent.appendChild(banner);
+      mainContent.appendChild(SavedPage());
+
+      contentContainer.appendChild(mainContent);
+      window.scrollTo(0, 0);
+    }
+
     function renderWatch(params: Record<string, string>) {
       contentContainer.innerHTML = '';
 
@@ -112,8 +197,24 @@ if (savedTheme === 'dark') {
         return;
       }
 
-      const watchPage = WatchPage({ video });
+      let queue: { listId: string; listName: string; videos: VideoData[] } | undefined;
+      if (params.playlistId) {
+        const list = getSavedLists().find((savedList) => savedList.id === params.playlistId);
+        if (list) {
+          const queueVideos = list.videoIds
+            .map((videoId) => getVideoById(videoId))
+            .filter((item): item is NonNullable<ReturnType<typeof getVideoById>> => !!item);
+          queue = {
+            listId: list.id,
+            listName: list.name,
+            videos: queueVideos,
+          };
+        }
+      }
+
+      const watchPage = WatchPage({ video, queue });
       contentContainer.appendChild(watchPage);
+      void recordWatchedVideo(video.id);
 
       window.scrollTo(0, 0);
     }
@@ -161,7 +262,10 @@ if (savedTheme === 'dark') {
     }
 
     addRoute('/', renderHome);
+    addRoute('/history', renderHistory);
+    addRoute('/saved', renderSaved);
     addRoute('/upload', renderUpload);
+    addRoute('/watch/:id/playlist/:playlistId', renderWatch);
     addRoute('/watch/:id', renderWatch);
     addRoute('/channel/:id', (params) => {
       renderChannel({ ...params, tab: 'videos' });

@@ -5,6 +5,8 @@ export interface LogoOptions {
 
 export function Logo(options: LogoOptions = {}): HTMLAnchorElement {
   const { brandName = 'Vilo', onClick } = options;
+  const irisStates = ['normal', 'play', 'pause'] as const;
+  let irisIndex = 0;
 
   const link = document.createElement('a');
   link.href = '#';
@@ -18,7 +20,11 @@ export function Logo(options: LogoOptions = {}): HTMLAnchorElement {
   eyeOpen.setAttribute('viewBox', '0 0 16 16');
   eyeOpen.setAttribute('fill', 'none');
   eyeOpen.innerHTML = `
-    <path fill-rule="evenodd" clip-rule="evenodd" d="M0 8L3.07945 4.30466C4.29638 2.84434 6.09909 2 8 2C9.90091 2 11.7036 2.84434 12.9206 4.30466L16 8L12.9206 11.6953C11.7036 13.1557 9.90091 14 8 14C6.09909 14 4.29638 13.1557 3.07945 11.6953L0 8ZM8 11C9.65685 11 11 9.65685 11 8C11 6.34315 9.65685 5 8 5C6.34315 5 5 6.34315 5 8C5 9.65685 6.34315 11 8 11Z" fill="currentColor"/>
+    <path d="M0 8L3.07945 4.30466C4.29638 2.84434 6.09909 2 8 2C9.90091 2 11.7036 2.84434 12.9206 4.30466L16 8L12.9206 11.6953C11.7036 13.1557 9.90091 14 8 14C6.09909 14 4.29638 13.1557 3.07945 11.6953L0 8Z" fill="currentColor"/>
+    <circle class="eye-iris-shape iris-normal" cx="8" cy="8" r="2.6"/>
+    <path class="eye-iris-shape iris-play" d="M6.5 5.9L11.3 8L6.5 10.1V5.9Z"/>
+    <rect class="eye-iris-shape iris-pause" x="5.95" y="5.9" width="1.65" height="4.2" rx="0.45"/>
+    <rect class="eye-iris-shape iris-pause" x="8.4" y="5.9" width="1.65" height="4.2" rx="0.45"/>
   `;
 
   const eyeClosed = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -31,6 +37,18 @@ export function Logo(options: LogoOptions = {}): HTMLAnchorElement {
 
   eyeContainer.appendChild(eyeOpen);
   eyeContainer.appendChild(eyeClosed);
+  eyeContainer.dataset.iris = irisStates[0];
+
+  const advanceIrisState = () => {
+    irisIndex = (irisIndex + 1) % irisStates.length;
+    eyeContainer.dataset.iris = irisStates[irisIndex];
+  };
+
+  const handleBlinkIteration = () => {
+    advanceIrisState();
+  };
+
+  eyeOpen.addEventListener('animationiteration', handleBlinkIteration);
 
   const text = document.createElement('span');
   text.className = 'logo-text';
@@ -45,6 +63,19 @@ export function Logo(options: LogoOptions = {}): HTMLAnchorElement {
       onClick();
     });
   }
+
+  let mounted = false;
+  const cleanupObserver = new MutationObserver(() => {
+    if (!mounted) {
+      if (document.contains(link)) mounted = true;
+      return;
+    }
+    if (!document.contains(link)) {
+      eyeOpen.removeEventListener('animationiteration', handleBlinkIteration);
+      cleanupObserver.disconnect();
+    }
+  });
+  cleanupObserver.observe(document.body, { childList: true, subtree: true });
 
   return link;
 }

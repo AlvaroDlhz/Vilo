@@ -75,11 +75,11 @@ export function ChannelPage(options: ChannelPageOptions): HTMLDivElement {
     : null;
 
   let currentChannelName = ownerProfile?.display_name || primaryVideo?.channelName || channel.name;
-  const channelUsername = ownerProfile?.username || primaryVideo?.channelUsername || toHandleBase(currentChannelName);
+  const channelUsername = ownerProfile?.username || channel.username || primaryVideo?.channelUsername || toHandleBase(currentChannelName);
   const channelHandle = `@${channelUsername}`;
   let currentDescription = ownerProfile?.bio || channel.description || '';
-  let currentAvatarUrl = ownerProfile?.avatar_url || primaryVideo?.channelAvatar || null;
-  let currentBannerUrl = ownerProfile?.banner_url || null;
+  let currentAvatarUrl = ownerProfile?.avatar_url || channel.avatarUrl || primaryVideo?.channelAvatar || null;
+  let currentBannerUrl = ownerProfile?.banner_url || channel.bannerUrl || null;
 
   const fallbackSubscribers = primaryVideo?.subscribers || channel.subscribers || '0 suscriptores';
   const channelVideoCount = videos.length;
@@ -279,6 +279,8 @@ export function ChannelPage(options: ChannelPageOptions): HTMLDivElement {
     descriptionInput.value = currentDescription;
     channel.name = currentChannelName;
     channel.description = currentDescription;
+    channel.avatarUrl = currentAvatarUrl;
+    channel.bannerUrl = currentBannerUrl;
     applyAvatarVisual(currentAvatarUrl);
     applyBannerVisual(currentBannerUrl);
   };
@@ -562,6 +564,8 @@ type OwnerChannelVideo = (ReturnType<typeof getVideosByChannel>)[number] & {
   createdAt?: string;
 };
 
+type EditableVisibility = 'public' | 'unlisted' | 'private' | 'sponsors';
+
 function hashToGradientIndex(value: string): number {
   let hash = 0;
   for (let i = 0; i < value.length; i += 1) {
@@ -681,6 +685,31 @@ function isSponsorsOnly(video: OwnerChannelVideo): boolean {
 
   const tags = Array.isArray(video.tags) ? video.tags : [];
   return tags.some((tag) => normalizeForSearch(tag).includes('patrocin'));
+}
+
+function toEditableVisibility(video: OwnerChannelVideo): EditableVisibility {
+  if (video.visibility === 'private' && isSponsorsOnly(video)) return 'sponsors';
+  if (video.visibility === 'private') return 'private';
+  if (video.visibility === 'unlisted') return 'unlisted';
+  return 'public';
+}
+
+function toStorageVisibility(
+  selection: EditableVisibility,
+  currentAudience?: string,
+): { visibility: string; audience: string } {
+  if (selection === 'sponsors') {
+    return { visibility: 'private', audience: 'sponsors' };
+  }
+
+  const fallbackAudience = currentAudience && currentAudience !== 'sponsors'
+    ? currentAudience
+    : 'all';
+
+  return {
+    visibility: selection,
+    audience: fallbackAudience,
+  };
 }
 
 function getFeaturedVideos(videos: OwnerChannelVideo[]): OwnerChannelVideo[] {
@@ -837,6 +866,8 @@ function renderVideosTab(channel: ChannelData, isOwnChannel: boolean): HTMLEleme
     audience: 'all',
     status: 'published',
   }));
+  const currentUserId = getAuthState().user?.id || null;
+  const canManageVideos = !!(isOwnChannel && currentUserId);
   let searchQuery = '';
   let selectedFilter: OwnerVideoFilter = 'all';
 
@@ -852,48 +883,236 @@ function renderVideosTab(channel: ChannelData, isOwnChannel: boolean): HTMLEleme
     }
 
     filteredVideos.forEach((video) => {
-    const row = document.createElement('div');
-    row.className = 'channel-owner-video-row';
+      const row = document.createElement('div');
+      row.className = 'channel-owner-video-row';
 
-    const card = VideoCard({
-      thumbnail: video.thumbnailUrl || undefined,
-      videoUrl: video.videoUrl,
-      title: video.title,
-      channelName: video.channelName,
-      channelAvatar: video.channelAvatar || undefined,
-      views: video.views,
-      uploadedAt: video.uploadedAt,
-      duration: video.duration,
-      gradientIndex: video.gradientIndex,
-      variant: 'owner',
-      showChannelName: false,
-      onClick: () => navigate(`/watch/${video.id}`),
-    });
+      const content = document.createElement('div');
+      content.className = 'channel-owner-video-content';
+      if (canManageVideos) {
+        content.classList.add('channel-owner-video-content--editable');
+      }
 
-    const insights = document.createElement('div');
-    insights.className = 'channel-owner-video-insights';
+      const card = VideoCard({
+        thumbnail: video.thumbnailUrl || undefined,
+        videoUrl: video.videoUrl,
+        title: video.title,
+        channelName: video.channelName,
+        channelAvatar: video.channelAvatar || undefined,
+        views: video.views,
+        uploadedAt: video.uploadedAt,
+        duration: video.duration,
+        gradientIndex: video.gradientIndex,
+        variant: 'owner',
+        showChannelName: false,
+        onClick: () => navigate(`/watch/${video.id}`),
+      });
+      content.appendChild(card);
 
-    const viewsCount = parseViewsToNumber(video.views);
-    const likesCount = Number.parseInt(video.likes, 10) || 0;
-    const monetizationReady = viewsCount >= 1_000;
-    const likeRate = viewsCount > 0 ? Math.min(100, Math.round((likesCount / viewsCount) * 100)) : 0;
+      if (canManageVideos) {
+        const editor = document.createElement('div');
+        editor.className = 'channel-owner-video-editor';
 
-    insights.innerHTML = `
-      <div class="channel-owner-card">
-        <h4>Rendimiento</h4>
-        <div class="channel-owner-metric"><span>Vistas</span><strong>${formatCompactNumber(viewsCount)}</strong></div>
-        <div class="channel-owner-metric"><span>Likes</span><strong>${formatCompactNumber(likesCount)}</strong></div>
-        <div class="channel-owner-metric"><span>Tasa likes</span><strong>${likeRate}%</strong></div>
-      </div>
-      <div class="channel-owner-card">
-        <h4>Monetizacion</h4>
-        <p class="channel-owner-card-main">${monetizationReady ? 'Activa' : 'En revision'}</p>
-        <p class="channel-owner-card-sub">${monetizationReady ? 'Este video puede monetizar.' : 'Necesita mas vistas para monetizar mejor.'}</p>
-      </div>
-    `;
+        const titleInput = document.createElement('input');
+        titleInput.className = 'channel-owner-video-input';
+        titleInput.type = 'text';
+        titleInput.maxLength = 120;
+        titleInput.value = video.title;
+        titleInput.placeholder = 'Titulo del video';
 
-    row.append(card, insights);
-    list.appendChild(row);
+        const visibilitySelect = document.createElement('select');
+        visibilitySelect.className = 'channel-owner-video-select';
+        const visibilityOptions: Array<{ value: EditableVisibility; label: string }> = [
+          { value: 'public', label: 'Publico' },
+          { value: 'unlisted', label: 'No listado' },
+          { value: 'private', label: 'Privado' },
+          { value: 'sponsors', label: 'Para patrocinadores' },
+        ];
+        const currentVisibility = toEditableVisibility(video);
+        visibilityOptions.forEach((optionData) => {
+          const option = document.createElement('option');
+          option.value = optionData.value;
+          option.textContent = optionData.label;
+          option.selected = optionData.value === currentVisibility;
+          visibilitySelect.appendChild(option);
+        });
+
+        const thumbInput = document.createElement('input');
+        thumbInput.type = 'file';
+        thumbInput.accept = 'image/*';
+        thumbInput.className = 'channel-owner-video-thumb-input';
+        let selectedThumbnailFile: File | null = null;
+
+        const thumbBtn = document.createElement('button');
+        thumbBtn.type = 'button';
+        thumbBtn.className = 'channel-owner-video-btn channel-owner-video-btn-ghost';
+        thumbBtn.textContent = 'Cambiar miniatura';
+        thumbBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          thumbInput.click();
+        });
+
+        const thumbLabel = document.createElement('span');
+        thumbLabel.className = 'channel-owner-video-thumb-label';
+        thumbLabel.textContent = 'Sin cambios';
+
+        thumbInput.addEventListener('change', () => {
+          selectedThumbnailFile = thumbInput.files?.[0] || null;
+          thumbLabel.textContent = selectedThumbnailFile ? selectedThumbnailFile.name : 'Sin cambios';
+        });
+
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'channel-owner-video-btn channel-owner-video-btn-primary';
+        saveBtn.textContent = 'Guardar';
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.type = 'button';
+        deleteBtn.className = 'channel-owner-video-btn channel-owner-video-btn-danger';
+        deleteBtn.textContent = 'Eliminar';
+
+        const status = document.createElement('span');
+        status.className = 'channel-owner-video-status';
+
+        const setStatus = (message: string, isError = false) => {
+          status.textContent = message;
+          status.classList.toggle('error', isError);
+          status.classList.toggle('visible', !!message);
+        };
+
+        const setBusy = (busy: boolean, saveText = 'Guardar') => {
+          saveBtn.disabled = busy;
+          deleteBtn.disabled = busy;
+          thumbBtn.disabled = busy;
+          titleInput.disabled = busy;
+          visibilitySelect.disabled = busy;
+          saveBtn.textContent = busy ? saveText : 'Guardar';
+        };
+
+        saveBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const nextTitle = titleInput.value.trim();
+          const nextVisibility = visibilitySelect.value as EditableVisibility;
+          const titleChanged = nextTitle !== video.title;
+          const visibilityChanged = nextVisibility !== currentVisibility;
+          const thumbnailChanged = !!selectedThumbnailFile;
+
+          if (!nextTitle) {
+            setStatus('El titulo no puede estar vacio.', true);
+            return;
+          }
+          if (!titleChanged && !visibilityChanged && !thumbnailChanged) {
+            setStatus('No hay cambios para guardar.');
+            return;
+          }
+
+          setBusy(true, 'Guardando...');
+          setStatus('');
+
+          try {
+            const updates: Record<string, unknown> = {};
+            if (titleChanged) updates.title = nextTitle;
+            if (visibilityChanged) {
+              const mappedVisibility = toStorageVisibility(nextVisibility, video.audience);
+              updates.visibility = mappedVisibility.visibility;
+              updates.audience = mappedVisibility.audience;
+            }
+
+            if (selectedThumbnailFile && currentUserId) {
+              const thumbExt = selectedThumbnailFile.name.split('.').pop() || 'jpg';
+              const thumbPath = `${currentUserId}/${video.id}.${thumbExt}`;
+              const { error: thumbError } = await supabase.storage
+                .from('thumbnails')
+                .upload(thumbPath, selectedThumbnailFile, { upsert: true });
+              if (thumbError) {
+                throw new Error(thumbError.message || 'No se pudo subir la miniatura');
+              }
+              const { data: thumbData } = supabase.storage.from('thumbnails').getPublicUrl(thumbPath);
+              updates.thumbnail_url = `${thumbData.publicUrl}?t=${Date.now()}`;
+            }
+
+            const { error } = await supabase
+              .from('user_videos')
+              .update(updates)
+              .eq('id', video.id)
+              .eq('user_id', video.userId);
+            if (error) {
+              throw new Error(error.message || 'No se pudo actualizar el video');
+            }
+
+            setStatus('Video actualizado.');
+            await reloadOwnerVideosFromServer();
+          } catch (err) {
+            setStatus(err instanceof Error ? err.message : 'No se pudo guardar.', true);
+          } finally {
+            setBusy(false);
+          }
+        });
+
+        deleteBtn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const shouldDelete = window.confirm(`Eliminar "${video.title}"? Esta accion no se puede deshacer.`);
+          if (!shouldDelete) return;
+
+          setBusy(true, 'Eliminando...');
+          setStatus('');
+
+          try {
+            const { error } = await supabase
+              .from('user_videos')
+              .delete()
+              .eq('id', video.id)
+              .eq('user_id', video.userId);
+            if (error) {
+              throw new Error(error.message || 'No se pudo eliminar el video');
+            }
+            await reloadOwnerVideosFromServer();
+          } catch (err) {
+            setStatus(err instanceof Error ? err.message : 'No se pudo eliminar.', true);
+          } finally {
+            setBusy(false);
+          }
+        });
+
+        const fields = document.createElement('div');
+        fields.className = 'channel-owner-video-editor-fields';
+        fields.append(titleInput, visibilitySelect);
+
+        const thumbnailRow = document.createElement('div');
+        thumbnailRow.className = 'channel-owner-video-thumb-row';
+        thumbnailRow.append(thumbBtn, thumbLabel, thumbInput);
+
+        const actionsRow = document.createElement('div');
+        actionsRow.className = 'channel-owner-video-actions';
+        actionsRow.append(saveBtn, deleteBtn, status);
+
+        editor.append(fields, thumbnailRow, actionsRow);
+        content.appendChild(editor);
+      }
+
+      const insights = document.createElement('div');
+      insights.className = 'channel-owner-video-insights';
+
+      const viewsCount = parseViewsToNumber(video.views);
+      const likesCount = Number.parseInt(video.likes, 10) || 0;
+      const monetizationReady = viewsCount >= 1_000;
+      const likeRate = viewsCount > 0 ? Math.min(100, Math.round((likesCount / viewsCount) * 100)) : 0;
+
+      insights.innerHTML = `
+        <div class="channel-owner-card">
+          <h4>Rendimiento</h4>
+          <div class="channel-owner-metric"><span>Vistas</span><strong>${formatCompactNumber(viewsCount)}</strong></div>
+          <div class="channel-owner-metric"><span>Likes</span><strong>${formatCompactNumber(likesCount)}</strong></div>
+          <div class="channel-owner-metric"><span>Tasa likes</span><strong>${likeRate}%</strong></div>
+        </div>
+        <div class="channel-owner-card">
+          <h4>Monetizacion</h4>
+          <p class="channel-owner-card-main">${monetizationReady ? 'Activa' : 'En revision'}</p>
+          <p class="channel-owner-card-sub">${monetizationReady ? 'Este video puede monetizar.' : 'Necesita mas vistas para monetizar mejor.'}</p>
+        </div>
+      `;
+
+      row.append(content, insights);
+      list.appendChild(row);
     });
   };
 
@@ -909,6 +1128,14 @@ function renderVideosTab(channel: ChannelData, isOwnChannel: boolean): HTMLEleme
     renderOwnerVideoList(getFilteredVideos());
   };
 
+  async function reloadOwnerVideosFromServer() {
+    if (!canManageVideos || !currentUserId) return;
+    const loadedVideos = await fetchOwnerChannelVideos(channel, currentUserId);
+    if (!loadedVideos) return;
+    ownerVideos = loadedVideos;
+    updateOwnerVideoList();
+  }
+
   updateOwnerVideoList();
 
   searchInput.addEventListener('input', () => {
@@ -921,13 +1148,8 @@ function renderVideosTab(channel: ChannelData, isOwnChannel: boolean): HTMLEleme
     updateOwnerVideoList();
   });
 
-  if (isOwnChannel && getAuthState().user?.id) {
-    const userId = getAuthState().user!.id;
-    void fetchOwnerChannelVideos(channel, userId).then((loadedVideos) => {
-      if (!loadedVideos || loadedVideos.length === 0) return;
-      ownerVideos = loadedVideos;
-      updateOwnerVideoList();
-    });
+  if (canManageVideos) {
+    void reloadOwnerVideosFromServer();
   }
 
   main.append(controls, list);

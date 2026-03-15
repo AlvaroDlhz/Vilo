@@ -6,6 +6,13 @@ import { voteVideo, getUserVideoVote, getVideoStats } from '../../lib/videoInter
 import { getAuthState, subscribe as subscribeAuth } from '../../data/authStore';
 import { supabase } from '../../lib/supabase';
 import { toggleSubscription, isSubscribed, getSubscriberCount } from '../../lib/subscriptions';
+import {
+  getSavedLists,
+  isVideoSavedAnywhere,
+  isVideoSavedInList,
+  removeVideoFromList,
+  saveVideoToList,
+} from '../../data/savedStore';
 
 export interface VideoInfoOptions {
   title: string;
@@ -25,6 +32,144 @@ function formatViewCount(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M vistas`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1).replace(/\.0$/, '')}K vistas`;
   return `${n} vista${n !== 1 ? 's' : ''}`;
+}
+
+interface SaveListsModalResult {
+  listIds: string[];
+  initialIds: string[];
+  selectedIds: string[];
+}
+
+function openSaveToListsModal(videoId: string): Promise<SaveListsModalResult | null> {
+  const lists = getSavedLists();
+  const initialSelected = new Set(
+    lists
+      .filter((list) => isVideoSavedInList(videoId, list.id))
+      .map((list) => list.id),
+  );
+  const selected = new Set(initialSelected);
+
+  return new Promise((resolve) => {
+    const previous = document.querySelector('.video-info-save-modal-backdrop');
+    if (previous) previous.remove();
+
+    const backdrop = document.createElement('div');
+    backdrop.className = 'video-info-save-modal-backdrop';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'video-info-save-modal';
+    dialog.setAttribute('role', 'dialog');
+    dialog.setAttribute('aria-modal', 'true');
+    dialog.setAttribute('aria-label', 'Guardar video en listas');
+
+    const subtitle = document.createElement('p');
+    subtitle.className = 'video-info-save-modal-subtitle';
+    subtitle.textContent = 'Selecciona una o varias listas';
+
+    const body = document.createElement('div');
+    body.className = 'video-info-save-modal-body';
+
+    const list = document.createElement('div');
+    list.className = 'video-info-save-modal-list';
+
+    const itemById = new Map<string, HTMLButtonElement>();
+
+    const setItemState = (item: HTMLButtonElement, isSelected: boolean) => {
+      item.classList.toggle('is-selected', isSelected);
+      item.setAttribute('aria-pressed', isSelected ? 'true' : 'false');
+    };
+
+    lists.forEach((savedList) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'video-info-save-list-item';
+
+      const left = document.createElement('span');
+      left.className = 'video-info-save-list-left';
+
+      const check = document.createElement('span');
+      check.className = 'video-info-save-list-check';
+      check.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      `;
+
+      const name = document.createElement('span');
+      name.className = 'video-info-save-list-name';
+      name.textContent = savedList.name;
+
+      const count = document.createElement('span');
+      count.className = 'video-info-save-list-count';
+      count.textContent = `${savedList.videoIds.length} videos`;
+
+      left.append(check, name);
+      item.append(left, count);
+
+      const toggle = () => {
+        if (selected.has(savedList.id)) selected.delete(savedList.id);
+        else selected.add(savedList.id);
+        setItemState(item, selected.has(savedList.id));
+      };
+
+      item.addEventListener('click', toggle);
+      setItemState(item, selected.has(savedList.id));
+      itemById.set(savedList.id, item);
+      list.appendChild(item);
+    });
+
+    body.append(subtitle, list);
+
+    const footer = document.createElement('div');
+    footer.className = 'video-info-save-modal-footer';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = 'video-info-save-modal-btn video-info-save-modal-btn--ghost';
+    cancelBtn.textContent = 'Cancelar';
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.className = 'video-info-save-modal-btn video-info-save-modal-btn--primary';
+    saveBtn.textContent = 'Guardar';
+
+    footer.append(cancelBtn, saveBtn);
+    dialog.append(body, footer);
+    backdrop.appendChild(dialog);
+    document.body.appendChild(backdrop);
+
+    const cleanup = () => {
+      document.removeEventListener('keydown', onKeyDown);
+      backdrop.remove();
+    };
+
+    const closeWith = (result: SaveListsModalResult | null) => {
+      cleanup();
+      resolve(result);
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        closeWith(null);
+      }
+    };
+
+    backdrop.addEventListener('click', (event) => {
+      if (event.target === backdrop) closeWith(null);
+    });
+
+    cancelBtn.addEventListener('click', () => closeWith(null));
+    saveBtn.addEventListener('click', () => {
+      closeWith({
+        listIds: Array.from(itemById.keys()),
+        initialIds: Array.from(initialSelected),
+        selectedIds: Array.from(selected),
+      });
+    });
+
+    document.addEventListener('keydown', onKeyDown);
+  });
 }
 
 export function VideoInfo(options: VideoInfoOptions): HTMLDivElement {
@@ -303,6 +448,36 @@ export function VideoInfo(options: VideoInfoOptions): HTMLDivElement {
     </svg>`,
     'Guardar',
   );
+
+  const saveLabel = saveBtn.querySelector('span');
+  const updateSaveBtnState = () => {
+    if (!videoId) return;
+    const saved = isVideoSavedAnywhere(videoId);
+    saveBtn.classList.toggle('active', saved);
+    if (saveLabel) saveLabel.textContent = saved ? 'Guardado' : 'Guardar';
+  };
+
+  if (videoId) {
+    updateSaveBtnState();
+    saveBtn.addEventListener('click', async () => {
+      const selection = await openSaveToListsModal(videoId);
+      if (!selection) return;
+
+      const initialIds = new Set(selection.initialIds);
+      const selectedIds = new Set(selection.selectedIds);
+
+      selection.listIds.forEach((listId) => {
+        const wasSelected = initialIds.has(listId);
+        const isSelectedNow = selectedIds.has(listId);
+        if (wasSelected === isSelectedNow) return;
+
+        if (isSelectedNow) saveVideoToList(videoId, listId);
+        else removeVideoFromList(videoId, listId);
+      });
+
+      updateSaveBtnState();
+    });
+  }
 
   const reportBtn = createActionBtn(
     `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

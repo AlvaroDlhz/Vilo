@@ -25,11 +25,32 @@ export interface Profile {
   updated_at: string;
 }
 
+function resolveEmailRedirectUrl(): string | undefined {
+  const env = import.meta.env as Record<string, string | undefined>;
+  const configured =
+    env.VITE_EMAIL_REDIRECT_TO
+    || env.VITE_PUBLIC_APP_URL
+    || env.VITE_APP_URL;
+
+  if (configured && configured.trim().length > 0) {
+    return configured.trim();
+  }
+
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+
+  return undefined;
+}
+
 export async function signUp(data: SignUpData) {
+  const emailRedirectTo = resolveEmailRedirectUrl();
+
   return supabase.auth.signUp({
     email: data.email,
     password: data.password,
     options: {
+      ...(emailRedirectTo ? { emailRedirectTo } : {}),
       data: {
         display_name: data.display_name,
         username: data.username,

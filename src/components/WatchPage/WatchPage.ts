@@ -8,9 +8,130 @@ import { hashColor } from '../../utils/avatarColor';
 import { getAuthState, subscribe } from '../../data/authStore';
 import { fetchCommentsWithVotes, postComment, voteComment, deleteComment, fetchReplies, type Comment } from '../../lib/comments';
 import { incrementViews } from '../../lib/videoInteractions';
+import { toggleVideoInList } from '../../data/savedStore';
+import menuIcon from '../../assets/menu.svg';
+import { captureRandomFrameAsDataUrl } from '../../utils/videoThumbnail';
 
 export interface WatchPageOptions {
   video: VideoData;
+  queue?: {
+    listId: string;
+    listName: string;
+    videos: VideoData[];
+  };
+}
+
+const queueDurationCache = new Map<string, string>();
+const queueDurationPending = new Map<string, Promise<string | null>>();
+const queueGeneratedThumbCache = new Map<string, Promise<string | null>>();
+
+function formatDurationFromSeconds(totalSeconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function normalizeDurationLabel(raw: unknown): string {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return formatDurationFromSeconds(raw);
+  }
+
+  if (typeof raw !== 'string') return '';
+  const value = raw.trim();
+  if (!value) return '';
+
+  if (/^\d+$/.test(value)) {
+    return formatDurationFromSeconds(Number(value));
+  }
+
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(value)) {
+    return value;
+  }
+
+  return '';
+}
+
+async function resolveQueueDuration(video: VideoData): Promise<string | null> {
+  const fromData = normalizeDurationLabel(video.duration);
+  if (fromData) {
+    queueDurationCache.set(video.id, fromData);
+    return fromData;
+  }
+
+  const cached = queueDurationCache.get(video.id);
+  if (cached) return cached;
+
+  if (!video.videoUrl) return null;
+
+  const pending = queueDurationPending.get(video.id);
+  if (pending) return pending;
+
+  const task = new Promise<string | null>((resolve) => {
+    const probe = document.createElement('video');
+    probe.preload = 'metadata';
+    probe.src = video.videoUrl;
+    probe.muted = true;
+
+    const cleanup = () => {
+      probe.onloadedmetadata = null;
+      probe.onerror = null;
+      probe.removeAttribute('src');
+      probe.load();
+    };
+
+    probe.onloadedmetadata = () => {
+      const label = Number.isFinite(probe.duration) ? formatDurationFromSeconds(probe.duration) : '';
+      cleanup();
+      resolve(label || null);
+    };
+
+    probe.onerror = () => {
+      cleanup();
+      resolve(null);
+    };
+
+    probe.load();
+  });
+
+  queueDurationPending.set(video.id, task);
+  const resolved = await task;
+  queueDurationPending.delete(video.id);
+
+  if (resolved) {
+    queueDurationCache.set(video.id, resolved);
+  }
+
+  return resolved;
+}
+
+function getQueueGeneratedThumbnail(videoUrl: string): Promise<string | null> {
+  const cached = queueGeneratedThumbCache.get(videoUrl);
+  if (cached) return cached;
+
+  const generation = captureRandomFrameAsDataUrl(videoUrl).catch(() => null);
+  queueGeneratedThumbCache.set(videoUrl, generation);
+  return generation;
+}
+
+async function applyQueueGeneratedThumbnail(
+  container: HTMLSpanElement,
+  videoUrl: string,
+  title: string,
+): Promise<void> {
+  const frame = await getQueueGeneratedThumbnail(videoUrl);
+  if (!frame || !container.isConnected) return;
+  if (container.querySelector('img')) return;
+
+  const img = document.createElement('img');
+  img.src = frame;
+  img.alt = title;
+  container.prepend(img);
 }
 
 function timeAgo(dateStr: string): string {
@@ -40,7 +161,62 @@ function timeAgo(dateStr: string): string {
 }
 
 export function WatchPage(options: WatchPageOptions): HTMLDivElement {
-  const { video } = options;
+  const { video, queue } = options;
+  const isPlaylistPlayback = !!queue;
+  let cleanupQueueMenus: (() => void) | null = null;
+  const queueVideos = queue?.videos || [];
+  const queueListId = queue?.listId || '';
+  const queueOrderStorageKey = queueListId ? `vilo_queue_order:${queueListId}` : '';
+
+  function withSavedQueueOrder(videos: VideoData[]): VideoData[] {
+    if (!queueOrderStorageKey || videos.length <= 1) return [...videos];
+    const raw = sessionStorage.getItem(queueOrderStorageKey);
+    if (!raw) return [...videos];
+
+    try {
+      const orderedIds = JSON.parse(raw) as unknown;
+      if (!Array.isArray(orderedIds)) return [...videos];
+
+      const byId = new Map(videos.map((item) => [item.id, item]));
+      const ordered: VideoData[] = [];
+
+      orderedIds.forEach((id) => {
+        if (typeof id !== 'string') return;
+        const match = byId.get(id);
+        if (!match) return;
+        ordered.push(match);
+        byId.delete(id);
+      });
+
+      videos.forEach((item) => {
+        if (byId.has(item.id)) ordered.push(item);
+      });
+
+      return ordered.length ? ordered : [...videos];
+    } catch {
+      return [...videos];
+    }
+  }
+
+  let orderedQueueVideos = withSavedQueueOrder(queueVideos);
+
+  function persistQueueOrder() {
+    if (!queueOrderStorageKey) return;
+    sessionStorage.setItem(
+      queueOrderStorageKey,
+      JSON.stringify(orderedQueueVideos.map((item) => item.id)),
+    );
+  }
+
+  if (queueOrderStorageKey && orderedQueueVideos.length > 0) {
+    persistQueueOrder();
+  }
+
+  function getNextVideoInQueue(): VideoData | undefined {
+    const currentIndex = orderedQueueVideos.findIndex((queueVideo) => queueVideo.id === video.id);
+    if (currentIndex < 0) return undefined;
+    return orderedQueueVideos[currentIndex + 1];
+  }
 
   const page = document.createElement('div');
   page.className = 'watch-page';
@@ -53,6 +229,14 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
     videoUrl: video.videoUrl,
     gradientIndex: video.gradientIndex,
     duration: video.duration,
+    onEnded: () => {
+      const nextQueueVideo = getNextVideoInQueue();
+      if (!nextQueueVideo) return;
+      const route = queueListId
+        ? `/watch/${nextQueueVideo.id}/playlist/${queueListId}`
+        : `/watch/${nextQueueVideo.id}`;
+      navigate(route);
+    },
   });
 
   const info = VideoInfo({
@@ -97,6 +281,7 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
       gradientIndex: rec.gradientIndex,
       variant: 'default',
       onClick: () => navigate(`/watch/${rec.id}`),
+      onSaveClick: () => toggleVideoInList(rec.id),
     });
     recommendations.appendChild(card);
   });
@@ -104,9 +289,12 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
   recSection.append(recHeading, recommendations);
   primary.append(player, info, recSection);
 
-  // Secondary column: comments
+  // Secondary column: comments + queue tabs
   const secondary = document.createElement('div');
   secondary.className = 'watch-page-secondary';
+
+  const commentsPanel = document.createElement('div');
+  commentsPanel.className = 'watch-page-secondary-panel';
 
   const commentsHeader = document.createElement('div');
   commentsHeader.className = 'comments-header';
@@ -178,6 +366,26 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
     const avatar = document.createElement('div');
     avatar.className = 'comment-avatar';
     const authorName = c.profile?.display_name || 'Usuario';
+    const channelRouteId = (c.user_id || c.profile?.username || '').trim();
+    const canNavigateToChannel = channelRouteId.length > 0;
+
+    const bindChannelNavigation = (el: HTMLElement) => {
+      if (!canNavigateToChannel) return;
+      const goToChannel = () => navigate(`/channel/${channelRouteId}`);
+
+      el.classList.add('comment-channel-link');
+      el.setAttribute('role', 'link');
+      el.tabIndex = 0;
+      el.addEventListener('click', (e) => {
+        e.stopPropagation();
+        goToChannel();
+      });
+      el.addEventListener('keydown', (e) => {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        e.preventDefault();
+        goToChannel();
+      });
+    };
 
     if (c.profile?.avatar_url) {
       const img = document.createElement('img');
@@ -212,6 +420,14 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
     timeEl.textContent = timeAgo(c.created_at);
 
     header.append(authorEl, usernameEl, timeEl);
+    if (canNavigateToChannel) {
+      avatar.classList.add('comment-avatar--clickable');
+    }
+    bindChannelNavigation(avatar);
+    bindChannelNavigation(authorEl);
+    if (usernameEl.textContent) {
+      bindChannelNavigation(usernameEl);
+    }
 
     const textEl = document.createElement('p');
     textEl.className = 'comment-text';
@@ -588,7 +804,289 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
 
   commentInput.append(inputAvatar, input);
 
-  secondary.append(commentsHeader, commentSearch, commentInput, commentList);
+  commentsPanel.append(commentsHeader, commentSearch, commentInput, commentList);
+  if (isPlaylistPlayback) {
+    const tabs = document.createElement('div');
+    tabs.className = 'watch-page-secondary-tabs';
+
+    const commentsTab = document.createElement('button');
+    commentsTab.type = 'button';
+    commentsTab.className = 'watch-page-secondary-tab';
+    commentsTab.textContent = 'Comentarios';
+
+    const queueTab = document.createElement('button');
+    queueTab.type = 'button';
+    queueTab.className = 'watch-page-secondary-tab';
+    queueTab.textContent = 'Cola de videos';
+
+    tabs.append(commentsTab, queueTab);
+
+    const queuePanel = document.createElement('div');
+    queuePanel.className = 'watch-page-secondary-panel';
+
+    function setActiveSecondaryTab(tab: 'comments' | 'queue') {
+      const commentsActive = tab === 'comments';
+      commentsTab.classList.toggle('active', commentsActive);
+      queueTab.classList.toggle('active', !commentsActive);
+      commentsPanel.style.display = commentsActive ? '' : 'none';
+      queuePanel.style.display = commentsActive ? 'none' : '';
+    }
+
+    commentsTab.addEventListener('click', () => setActiveSecondaryTab('comments'));
+    queueTab.addEventListener('click', () => setActiveSecondaryTab('queue'));
+
+    const queueHeading = document.createElement('h3');
+    queueHeading.className = 'watch-page-section-title';
+    queueHeading.textContent = queue?.listName || 'Cola de videos';
+
+    const queueList = document.createElement('div');
+    queueList.className = 'watch-page-queue-list';
+    let draggedVideoId: string | null = null;
+    let suppressClickAfterDrag = false;
+    let openQueueMenuVideoId: string | null = null;
+
+    const clearDragStates = () => {
+      queueList.querySelectorAll('.watch-page-queue-item').forEach((node) => {
+        node.classList.remove('drag-over');
+        node.classList.remove('dragging');
+      });
+    };
+
+    const renderQueueList = () => {
+      queueList.innerHTML = '';
+
+      if (orderedQueueVideos.length === 0) {
+        const emptyQueue = document.createElement('p');
+        emptyQueue.className = 'comments-empty';
+        emptyQueue.textContent = 'Esta cola esta vacia.';
+        queueList.appendChild(emptyQueue);
+        return;
+      }
+
+      orderedQueueVideos.forEach((queueVideo) => {
+        const isCurrent = queueVideo.id === video.id;
+        const isMenuOpen = openQueueMenuVideoId === queueVideo.id;
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'watch-page-queue-item'
+          + (isCurrent ? ' active' : '')
+          + (isMenuOpen ? ' options-open' : '');
+        item.draggable = false;
+
+        const options = document.createElement('div');
+        options.className = 'watch-page-queue-options';
+
+        const optionsBtn = document.createElement('button');
+        optionsBtn.type = 'button';
+        optionsBtn.className = 'watch-page-queue-options-btn' + (isMenuOpen ? ' is-open' : '');
+        optionsBtn.setAttribute('aria-label', 'Opciones de video en cola');
+
+        const optionsIcon = document.createElement('span');
+        optionsIcon.className = 'watch-page-queue-options-icon';
+        optionsIcon.style.setProperty('--menu-icon', `url("${menuIcon}")`);
+        optionsBtn.appendChild(optionsIcon);
+
+        const optionsMenu = document.createElement('div');
+        optionsMenu.className = 'watch-page-queue-options-menu' + (isMenuOpen ? ' open' : '');
+
+        const createOption = (
+          label: string,
+          onClick: () => void,
+          disabled = false,
+        ): HTMLButtonElement => {
+          const option = document.createElement('button');
+          option.type = 'button';
+          option.className = 'watch-page-queue-options-item';
+          option.textContent = label;
+          option.disabled = disabled;
+          option.addEventListener('click', (event) => {
+            event.stopPropagation();
+            if (disabled) return;
+            openQueueMenuVideoId = null;
+            onClick();
+          });
+          return option;
+        };
+
+        const moveVideoToIndex = (toIndex: number) => {
+          const fromIndex = orderedQueueVideos.findIndex((entry) => entry.id === queueVideo.id);
+          if (fromIndex < 0 || fromIndex === toIndex) return;
+
+          const boundedIndex = Math.max(0, Math.min(toIndex, orderedQueueVideos.length - 1));
+          const [moved] = orderedQueueVideos.splice(fromIndex, 1);
+          orderedQueueVideos.splice(boundedIndex, 0, moved);
+          persistQueueOrder();
+          renderQueueList();
+        };
+
+        optionsMenu.append(
+          createOption('Reproducir ahora', () => {
+            const route = queueListId
+              ? `/watch/${queueVideo.id}/playlist/${queueListId}`
+              : `/watch/${queueVideo.id}`;
+            navigate(route);
+          }),
+          createOption('Mover arriba', () => {
+            const idx = orderedQueueVideos.findIndex((entry) => entry.id === queueVideo.id);
+            moveVideoToIndex(idx - 1);
+          }, isCurrent || orderedQueueVideos[0]?.id === queueVideo.id),
+          createOption('Mover abajo', () => {
+            const idx = orderedQueueVideos.findIndex((entry) => entry.id === queueVideo.id);
+            moveVideoToIndex(idx + 1);
+          }, isCurrent || orderedQueueVideos[orderedQueueVideos.length - 1]?.id === queueVideo.id),
+        );
+
+        optionsBtn.addEventListener('click', (event) => {
+          event.stopPropagation();
+          openQueueMenuVideoId = openQueueMenuVideoId === queueVideo.id ? null : queueVideo.id;
+          renderQueueList();
+        });
+
+        options.append(optionsBtn, optionsMenu);
+
+        const handle = document.createElement('span');
+        handle.className = 'watch-page-queue-handle' + (isCurrent ? ' is-disabled' : '');
+        handle.draggable = !isCurrent;
+        handle.innerHTML = `
+          <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+            <circle cx="8" cy="6" r="1.3"/><circle cx="16" cy="6" r="1.3"/>
+            <circle cx="8" cy="12" r="1.3"/><circle cx="16" cy="12" r="1.3"/>
+            <circle cx="8" cy="18" r="1.3"/><circle cx="16" cy="18" r="1.3"/>
+          </svg>
+        `;
+        handle.addEventListener('click', (event) => event.stopPropagation());
+
+        const thumb = document.createElement('span');
+        thumb.className = 'watch-page-queue-thumb';
+
+        if (queueVideo.thumbnailUrl) {
+          const img = document.createElement('img');
+          img.src = queueVideo.thumbnailUrl;
+          img.alt = queueVideo.title;
+          thumb.appendChild(img);
+        } else {
+          thumb.style.background = `var(--gradient-${queueVideo.gradientIndex}, var(--bg-secondary))`;
+          if (queueVideo.videoUrl) {
+            void applyQueueGeneratedThumbnail(thumb, queueVideo.videoUrl, queueVideo.title);
+          }
+        }
+
+        const duration = document.createElement('span');
+        duration.className = 'watch-page-queue-duration';
+        const durationLabel = normalizeDurationLabel(queueVideo.duration) || queueDurationCache.get(queueVideo.id) || '';
+        duration.textContent = durationLabel;
+
+        if (!durationLabel) {
+          void resolveQueueDuration(queueVideo).then((resolved) => {
+            if (!resolved || !duration.isConnected) return;
+            queueVideo.duration = resolved;
+            duration.textContent = resolved;
+          });
+        }
+        thumb.appendChild(duration);
+
+        const meta = document.createElement('span');
+        meta.className = 'watch-page-queue-meta';
+
+        const title = document.createElement('span');
+        title.className = 'watch-page-queue-title';
+        title.textContent = queueVideo.title;
+
+        const channel = document.createElement('span');
+        channel.className = 'watch-page-queue-channel';
+        channel.textContent = queueVideo.channelName;
+
+        meta.append(title, channel);
+        item.append(options, handle, thumb, meta);
+
+        item.addEventListener('click', () => {
+          if (suppressClickAfterDrag) return;
+          const route = queueListId
+            ? `/watch/${queueVideo.id}/playlist/${queueListId}`
+            : `/watch/${queueVideo.id}`;
+          navigate(route);
+        });
+
+        if (!isCurrent) {
+          handle.addEventListener('dragstart', (event) => {
+            draggedVideoId = queueVideo.id;
+            suppressClickAfterDrag = true;
+            item.classList.add('dragging');
+            event.dataTransfer?.setData('text/plain', queueVideo.id);
+            if (event.dataTransfer) event.dataTransfer.effectAllowed = 'move';
+          });
+
+          handle.addEventListener('dragend', () => {
+            draggedVideoId = null;
+            clearDragStates();
+            window.setTimeout(() => {
+              suppressClickAfterDrag = false;
+            }, 80);
+          });
+        }
+
+        item.addEventListener('dragover', (event) => {
+          if (!draggedVideoId || draggedVideoId === queueVideo.id) return;
+          event.preventDefault();
+          item.classList.add('drag-over');
+        });
+
+        item.addEventListener('dragleave', () => {
+          item.classList.remove('drag-over');
+        });
+
+        item.addEventListener('drop', (event) => {
+          if (!draggedVideoId || draggedVideoId === queueVideo.id) return;
+          event.preventDefault();
+
+          const fromIndex = orderedQueueVideos.findIndex((entry) => entry.id === draggedVideoId);
+          const targetIndex = orderedQueueVideos.findIndex((entry) => entry.id === queueVideo.id);
+          if (fromIndex < 0 || targetIndex < 0 || fromIndex === targetIndex) {
+            clearDragStates();
+            return;
+          }
+
+          const rect = item.getBoundingClientRect();
+          const dropAfter = event.clientY > rect.top + (rect.height / 2);
+          let insertIndex = targetIndex + (dropAfter ? 1 : 0);
+
+          const [moved] = orderedQueueVideos.splice(fromIndex, 1);
+          if (fromIndex < insertIndex) insertIndex -= 1;
+          orderedQueueVideos.splice(insertIndex, 0, moved);
+
+          persistQueueOrder();
+          clearDragStates();
+          renderQueueList();
+        });
+
+        queueList.appendChild(item);
+      });
+    };
+
+    renderQueueList();
+
+    const closeQueueMenusOnOutsideClick = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      const node = target as HTMLElement;
+      if (node.closest('.watch-page-queue-options')) return;
+      if (!openQueueMenuVideoId) return;
+      openQueueMenuVideoId = null;
+      renderQueueList();
+    };
+
+    document.addEventListener('click', closeQueueMenusOnOutsideClick);
+    cleanupQueueMenus = () => {
+      document.removeEventListener('click', closeQueueMenusOnOutsideClick);
+    };
+
+    queuePanel.append(queueHeading, queueList);
+    secondary.append(tabs, commentsPanel, queuePanel);
+    setActiveSecondaryTab(queueVideos.length > 0 ? 'queue' : 'comments');
+  } else {
+    secondary.append(commentsPanel);
+  }
+
   page.append(primary, secondary);
 
   // Load comments
@@ -603,6 +1101,7 @@ export function WatchPage(options: WatchPageOptions): HTMLDivElement {
     }
     if (!document.contains(page)) {
       unsub();
+      cleanupQueueMenus?.();
       observer.disconnect();
     }
   });

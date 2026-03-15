@@ -20,6 +20,9 @@ export interface ChannelPost {
 export interface ChannelData {
   id: string;
   name: string;
+  username?: string;
+  avatarUrl?: string | null;
+  bannerUrl?: string | null;
   subscribers: string;
   description: string;
   joinedDate: string;
@@ -36,6 +39,8 @@ interface ProfileChannelRow {
   display_name: string | null;
   username: string | null;
   bio: string | null;
+  avatar_url: string | null;
+  banner_url: string | null;
   created_at: string | null;
   subscriber_count: number | null;
 }
@@ -212,6 +217,9 @@ function buildChannelData(): Map<string, ChannelData> {
     channelMap.set(id, {
       id,
       name: channelName,
+      username: undefined,
+      avatarUrl: video.channelAvatar || null,
+      bannerUrl: null,
       subscribers: video.subscribers,
       description: descriptions[channelName] || `Bienvenidos al canal ${channelName}. Nuevo contenido cada semana.`,
       joinedDate: 'ene 2020',
@@ -274,6 +282,9 @@ function createChannelFromProfile(profile: ProfileChannelRow): ChannelData {
   return {
     id: profile.id,
     name: channelName,
+    username: profile.username || undefined,
+    avatarUrl: profile.avatar_url || null,
+    bannerUrl: profile.banner_url || null,
     subscribers: formatSubscribersCount(profile.subscriber_count),
     description: profile.bio || `Bienvenido al canal de ${channelName}.`,
     joinedDate: formatJoinedDate(profile.created_at),
@@ -298,6 +309,9 @@ function createFallbackChannelData(id: string, videos: VideoData[]): ChannelData
   return {
     id,
     name,
+    username: undefined,
+    avatarUrl: first.channelAvatar || null,
+    bannerUrl: null,
     subscribers: first.subscribers || '0 suscriptores',
     description: `Bienvenidos al canal ${name}.`,
     joinedDate: 'ene 2020',
@@ -308,6 +322,49 @@ function createFallbackChannelData(id: string, videos: VideoData[]): ChannelData
     playlists: [],
     posts: [],
   };
+}
+
+async function findProfileById(profileId: string): Promise<ProfileChannelRow | null> {
+  if (!profileId) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, display_name, username, bio, avatar_url, banner_url, created_at, subscriber_count')
+    .eq('id', profileId)
+    .maybeSingle<ProfileChannelRow>();
+  if (error || !data) return null;
+  return data;
+}
+
+async function findProfileByUsername(username: string): Promise<ProfileChannelRow | null> {
+  if (!username) return null;
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, display_name, username, bio, avatar_url, banner_url, created_at, subscriber_count')
+    .eq('username', username)
+    .maybeSingle<ProfileChannelRow>();
+  if (error || !data) return null;
+  return data;
+}
+
+async function resolveProfileForRoute(routeId: string): Promise<ProfileChannelRow | null> {
+  if (isLikelyUuid(routeId)) {
+    return findProfileById(routeId);
+  }
+
+  const byUsername = await findProfileByUsername(routeId);
+  if (byUsername) return byUsername;
+
+  const firstSlugMatch = getAllVideos().find((video) => slugify(video.channelName) === routeId);
+  if (!firstSlugMatch) return null;
+
+  const byUserId = await findProfileById(firstSlugMatch.userId);
+  if (byUserId) return byUserId;
+
+  if (firstSlugMatch.channelUsername) {
+    return findProfileByUsername(firstSlugMatch.channelUsername);
+  }
+
+  return null;
 }
 
 export function getChannelById(id: string): ChannelData | undefined {
@@ -326,28 +383,17 @@ export function getChannelById(id: string): ChannelData | undefined {
 
 export async function getChannelByRouteId(routeId: string): Promise<ChannelData | undefined> {
   const existing = getChannelById(routeId);
-  if (existing) return existing;
 
   try {
-    let profileQuery = supabase
-      .from('profiles')
-      .select('id, display_name, username, bio, created_at, subscriber_count');
-
-    if (isLikelyUuid(routeId)) {
-      profileQuery = profileQuery.eq('id', routeId);
-    } else {
-      profileQuery = profileQuery.eq('username', routeId);
-    }
-
-    const { data: profile, error } = await profileQuery.maybeSingle<ProfileChannelRow>();
-    if (error || !profile) return undefined;
+    const profile = await resolveProfileForRoute(routeId);
+    if (!profile) return existing;
 
     const channel = createChannelFromProfile(profile);
     channelMap.set(channel.id, channel);
     return channel;
   } catch (err) {
     console.warn('[channelStore] Failed to resolve channel route id:', err);
-    return undefined;
+    return existing;
   }
 }
 
@@ -370,6 +416,13 @@ export function getVideosByChannel(channelId: string): VideoData[] {
 }
 
 export function getChannelIdByName(channelName: string): string {
+  const byVideoAuthor = getAllVideos().find(
+    (video) => video.channelName.toLowerCase() === channelName.toLowerCase(),
+  );
+  if (byVideoAuthor?.userId) {
+    return byVideoAuthor.userId;
+  }
+
   for (const [id, channel] of channelMap.entries()) {
     if (channel.name.toLowerCase() === channelName.toLowerCase()) {
       return id;
@@ -390,6 +443,9 @@ export async function initChannelStore(): Promise<void> {
       const channel: ChannelData = {
         id: row.id,
         name: row.name,
+        username: row.username || undefined,
+        avatarUrl: row.avatar_url || null,
+        bannerUrl: row.banner_url || null,
         subscribers: row.subscribers,
         description: row.description,
         joinedDate: row.joined_date,

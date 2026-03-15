@@ -75,6 +75,38 @@ function formatSubscribers(n: number): string {
   return `${n} suscriptores`;
 }
 
+function formatDurationFromSeconds(totalSeconds: number): string {
+  const safeSeconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  const seconds = safeSeconds % 60;
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+}
+
+function normalizeDuration(raw: unknown): string {
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    return formatDurationFromSeconds(raw);
+  }
+
+  if (typeof raw !== 'string') return '';
+  const value = raw.trim();
+  if (!value) return '';
+
+  if (/^\d+$/.test(value)) {
+    return formatDurationFromSeconds(Number(value));
+  }
+
+  if (/^\d{1,2}:\d{2}(:\d{2})?$/.test(value)) {
+    return value;
+  }
+
+  return '';
+}
+
 function toHandleBase(name: string): string {
   return name
     .toLowerCase()
@@ -139,7 +171,12 @@ export async function initVideoStore(): Promise<void> {
         channelAvatar,
         views: formatViews(row.view_count ?? 0),
         uploadedAt: timeAgo(row.created_at),
-        duration: '',
+        duration: normalizeDuration(
+          row.duration
+          ?? row.duration_seconds
+          ?? row.video_duration
+          ?? row.length_seconds,
+        ),
         gradientIndex: hashToIndex(row.id),
         subscribers: channelSubscribers,
         likes: String(row.likes ?? 0),

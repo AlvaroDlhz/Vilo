@@ -12,6 +12,19 @@ export interface FeedsMenuOptions {
   onFeedChange?: (feed: Feed) => void;
 }
 
+const FEED_ICONS: Record<string, string> = {
+  all: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>`,
+  programming: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 6 2 12 8 18"/><polyline points="16 6 22 12 16 18"/><line x1="10" y1="20" x2="14" y2="4"/></svg>`,
+  tech: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="7" width="10" height="10" rx="2"/><line x1="12" y1="1" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="23"/><line x1="4.2" y1="4.2" x2="6.4" y2="6.4"/><line x1="17.6" y1="17.6" x2="19.8" y2="19.8"/><line x1="1" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="23" y2="12"/><line x1="4.2" y1="19.8" x2="6.4" y2="17.6"/><line x1="17.6" y1="6.4" x2="19.8" y2="4.2"/></svg>`,
+  entertainment: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="7 5 19 12 7 19 7 5"/><line x1="3" y1="6" x2="3" y2="18"/></svg>`,
+  lifestyle: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.35-7-10a4 4 0 0 1 7-2.7A4 4 0 0 1 19 11c0 5.65-7 10-7 10z"/></svg>`,
+  documentaries: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M4 4.5A2.5 2.5 0 0 1 6.5 7H20"/><path d="M6.5 7A2.5 2.5 0 0 0 4 9.5v10"/><path d="M20 17V7"/></svg>`,
+};
+
+function getFeedIcon(id: string): string {
+  return FEED_ICONS[id] || FEED_ICONS.all;
+}
+
 export function FeedsMenu(options: FeedsMenuOptions = {}): HTMLDivElement {
   const { onFeedChange } = options;
 
@@ -116,9 +129,20 @@ export function FeedsMenu(options: FeedsMenuOptions = {}): HTMLDivElement {
       item.classList.add('active');
     }
 
+    const main = document.createElement('div');
+    main.className = 'feed-item-main';
+
+    if (feed.isPredefined) {
+      const icon = document.createElement('span');
+      icon.className = 'feed-item-icon';
+      icon.innerHTML = getFeedIcon(feed.id);
+      main.appendChild(icon);
+    }
+
     const name = document.createElement('span');
     name.className = 'feed-item-name';
     name.textContent = feed.name;
+    main.appendChild(name);
 
     const actions = document.createElement('div');
     actions.className = 'feed-item-actions';
@@ -147,7 +171,7 @@ export function FeedsMenu(options: FeedsMenuOptions = {}): HTMLDivElement {
       actions.appendChild(delBtn);
     }
 
-    item.append(name, actions);
+    item.append(main, actions);
 
     item.addEventListener('click', () => {
       activeFeedId = feed.id;

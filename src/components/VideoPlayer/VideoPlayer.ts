@@ -4,6 +4,7 @@ export interface VideoPlayerOptions {
   videoUrl?: string;
   gradientIndex?: number;
   duration?: string;
+  onEnded?: () => void;
 }
 
 const gradientClasses = [
@@ -20,22 +21,22 @@ function formatTime(seconds: number): string {
 }
 
 export function VideoPlayer(options: VideoPlayerOptions = {}): HTMLDivElement {
-  const { videoUrl, gradientIndex = 0, duration = '0:00' } = options;
+  const { videoUrl, gradientIndex = 0, duration = '0:00', onEnded } = options;
 
   const player = document.createElement('div');
 
   // If we have a real video URL, use a real <video> element
   if (videoUrl) {
     player.className = 'video-player';
-    return buildRealPlayer(player, videoUrl);
+    return buildRealPlayer(player, videoUrl, onEnded);
   }
 
   // Fallback: gradient mock player
   player.className = `video-player ${gradientClasses[gradientIndex % gradientClasses.length]}`;
-  return buildMockPlayer(player, duration);
+  return buildMockPlayer(player, duration, onEnded);
 }
 
-function buildRealPlayer(player: HTMLDivElement, videoUrl: string): HTMLDivElement {
+function buildRealPlayer(player: HTMLDivElement, videoUrl: string, onEnded?: () => void): HTMLDivElement {
   const video = document.createElement('video');
   video.className = 'video-player-video';
   video.src = videoUrl;
@@ -191,6 +192,10 @@ function buildRealPlayer(player: HTMLDivElement, videoUrl: string): HTMLDivEleme
     }
   });
 
+  video.addEventListener('ended', () => {
+    onEnded?.();
+  });
+
   playBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePlay(); });
   playPauseBtn.addEventListener('click', (e) => { e.stopPropagation(); togglePlay(); });
   player.addEventListener('click', () => togglePlay());
@@ -243,7 +248,7 @@ function buildRealPlayer(player: HTMLDivElement, videoUrl: string): HTMLDivEleme
   return player;
 }
 
-function buildMockPlayer(player: HTMLDivElement, duration: string): HTMLDivElement {
+function buildMockPlayer(player: HTMLDivElement, duration: string, onEnded?: () => void): HTMLDivElement {
   const playBtn = document.createElement('button');
   playBtn.className = 'video-player-play';
   playBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>`;
@@ -288,7 +293,10 @@ function buildMockPlayer(player: HTMLDivElement, duration: string): HTMLDivEleme
       intervalId = window.setInterval(() => {
         progressValue = Math.min(progressValue + 0.2, 100);
         progressFill.style.width = `${progressValue}%`;
-        if (progressValue >= 100) togglePlay();
+        if (progressValue >= 100) {
+          togglePlay();
+          onEnded?.();
+        }
       }, 300);
     } else {
       playBtn.classList.remove('video-player-play--hidden');

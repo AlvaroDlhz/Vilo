@@ -153,6 +153,16 @@ export class Sidebar {
       btn.innerHTML = `${item.icon}<span>${item.label}</span>`;
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
+        if (item.id === 'history') {
+          navigate('/history');
+          this.close();
+          return;
+        }
+        if (item.id === 'watchLater') {
+          navigate('/saved');
+          this.close();
+          return;
+        }
         console.log(`Navegar a: ${item.id}`);
       });
       this.libraryList.appendChild(btn);
